@@ -74,6 +74,10 @@ convert_tfjs.py
 
 # Python ML venv (lives at ~/ml-env, not in repo)
 ml-env/
-__pycache__/
 PULSE_POINT_IMPLEMENTATION_PLAN.md
 pulsepointfuturedecisions.md
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
