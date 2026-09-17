@@ -17,16 +17,103 @@ const COCO_KNOWN = new Set(COCO_LABELS);
 export const TARGET_ALIASES = {
   phone: 'cell phone', iphone: 'cell phone', android: 'cell phone',
   'my phone': 'cell phone', 'cell phone': 'cell phone', mobile: 'cell phone',
+  smartphone: 'cell phone', 'phone case': 'cell phone',
   'computer mouse': 'mouse', trackpad: 'mouse', 'my mouse': 'mouse',
   tv: 'tv', television: 'tv', monitor: 'tv', screen: 'tv',
-  sofa: 'couch', couch: 'couch',
+  sofa: 'couch', couch: 'couch', loveseat: 'couch', sectional: 'couch',
   laptop: 'laptop', computer: 'laptop', macbook: 'laptop', notebook: 'laptop',
   labtop: 'laptop',
   remote: 'remote', 'tv remote': 'remote', 'remote control': 'remote',
-  ship: 'boat',
-  cup: 'cup', mug: 'cup', glass: 'cup',
-  bottle: 'bottle', 'water bottle': 'bottle',
-  pen: 'cell phone', pencil: 'cell phone',
+  ship: 'boat', kayak: 'boat', canoe: 'boat', sailboat: 'boat', yacht: 'boat',
+  'jet ski': 'boat',
+  cup: 'cup', mug: 'cup', glass: 'cup', 'measuring cup': 'cup',
+  'shot glass': 'cup',
+  bottle: 'bottle', 'water bottle': 'bottle', thermos: 'bottle',
+  'protein shaker': 'bottle', shampoo: 'bottle', conditioner: 'bottle',
+  'body wash': 'bottle', lotion: 'bottle', sunscreen: 'bottle',
+  'pill bottle': 'bottle',
+
+  // seating
+  armchair: 'chair', recliner: 'chair', stool: 'chair', barstool: 'chair',
+  'office chair': 'chair', 'patio chair': 'chair', 'adirondack chair': 'chair',
+
+  // tables
+  table: 'dining table', 'outdoor table': 'dining table',
+  'picnic table': 'dining table',
+
+  // beds
+  'twin bed': 'bed', 'full bed': 'bed', 'queen bed': 'bed', 'king bed': 'bed',
+  'bunk bed': 'bed', daybed: 'bed', futon: 'bed', crib: 'bed', cot: 'bed',
+  mattress: 'bed', 'bed frame': 'bed', 'hospital bed': 'bed',
+
+  // clocks
+  'alarm clock': 'clock', 'wall clock': 'clock', 'grandfather clock': 'clock',
+  'mantel clock': 'clock',
+
+  // grooming
+  'hair dryer': 'hair drier',
+
+  // plants
+  plant: 'potted plant', houseplant: 'potted plant', 'flower pot': 'potted plant',
+  planter: 'potted plant',
+
+  // kitchen appliances
+  fridge: 'refrigerator', freezer: 'refrigerator',
+  stove: 'oven', 'toaster oven': 'oven',
+  faucet: 'sink',
+
+  // kitchenware
+  'kitchen scissors': 'scissors',
+  'measuring spoon': 'spoon',
+  'mixing bowl': 'bowl',
+  'champagne glass': 'wine glass',
+  'chef knife': 'knife', 'bread knife': 'knife', 'paring knife': 'knife',
+
+  // food
+  bagel: 'donut',
+
+  // office / reading
+  textbook: 'book', dictionary: 'book', magazine: 'book', journal: 'book',
+  sketchbook: 'book',
+
+  // accessories
+  'bow tie': 'tie', 'patio umbrella': 'umbrella',
+  purse: 'handbag', 'tote bag': 'handbag', clutch: 'handbag',
+  briefcase: 'suitcase', luggage: 'suitcase', 'attach case': 'suitcase',
+
+  // sports balls
+  basketball: 'sports ball', football: 'sports ball', 'soccer ball': 'sports ball',
+  baseball: 'sports ball', softball: 'sports ball', 'tennis ball': 'sports ball',
+  'golf ball': 'sports ball', volleyball: 'sports ball', 'bowling ball': 'sports ball',
+  'rugby ball': 'sports ball',
+
+  // sports equipment
+  'badminton racket': 'tennis racket', 'cricket bat': 'baseball bat',
+  longboard: 'skateboard', ski: 'skis', paddleboard: 'surfboard',
+
+  // bikes
+  bike: 'bicycle', 'mountain bike': 'bicycle', 'road bike': 'bicycle',
+  'stationary bike': 'bicycle', 'electric bike': 'bicycle',
+
+  // road vehicles
+  sedan: 'car', suv: 'car', minivan: 'car', 'station wagon': 'car',
+  convertible: 'car', 'sports car': 'car', 'electric car': 'car',
+  'hybrid car': 'car', taxi: 'car', uber: 'car',
+  van: 'truck', 'pickup truck': 'truck',
+  moped: 'motorcycle',
+  'school bus': 'bus',
+  subway: 'train', tram: 'train',
+
+  // birds
+  parrot: 'bird', canary: 'bird', chicken: 'bird', duck: 'bird',
+  turkey: 'bird', goose: 'bird', eagle: 'bird', owl: 'bird',
+  hawk: 'bird', crow: 'bird', pigeon: 'bird', sparrow: 'bird',
+
+  // other animals
+  goat: 'sheep',
+
+  // toys
+  'stuffed animal': 'teddy bear',
 };
 
 const FUZZY_THRESHOLD = 0.42;
