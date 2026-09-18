@@ -1,0 +1,79 @@
+# ============================================================================
+# COMMIT POLICY — READ BEFORE COMMITTING
+# ----------------------------------------------------------------------------
+# NO Claude tags on any commit under any circumstances.
+# NO AI-assistant attribution of any kind (Claude, Anthropic, Copilot, etc.).
+#
+# Every commit must be attributable to a human team member. Forbidden lines:
+#   Co-Authored-By: Claude ...
+#   Co-Authored-By: <anything>@anthropic.com
+#   Claude-Session: ...
+#   🤖 Generated with Claude Code (or any variation)
+#   Any link to claude.ai/code or claude.ai/chat
+#
+# Enforcement:
+#   .githooks/commit-msg — blocks the commit locally
+#   .githooks/pre-push   — blocks the push if any commit in the push range
+#                          carries a forbidden tag
+#
+# Wire them into your clone once, after cloning:
+#   ./scripts/setup-git-hooks.sh
+#
+# Full policy: see COMMIT_POLICY.md
+# ============================================================================
+
+# Assistant / session config that would leak local state:
+.claude/
+.anthropic/
+CLAUDE.local.md
+# NOTE: CLAUDE.md and AGENTS.md at the repo root ARE tracked on purpose —
+# they hand the commit policy to every coding agent that opens this repo.
+
+node_modules/
+dist/
+dist-check/
+.npm-cache/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.expo/
+expo-pulse-point-qr.png
+.DS_Store
+.env
+.env.local
+
+# Vercel
+.vercel/
+
+# Expo (managed)
+.expo-shared/
+web-build/
+
+# React Native native builds (if generated)
+ios/Pods/
+ios/build/
+android/.gradle/
+android/app/build/
+
+# OS
+Thumbs.db
+desktop.ini
+
+# ML model conversion artifacts (intermediate files, not the final web model)
+yolo11n.pt
+yolo11n.onnx
+yolo11n.pb
+yolo11n_saved_model/
+calibration_image_sample_data_20x128x128x3_float32.npy
+convert_tfjs.py
+
+# Root-level duplicate web model output
+/yolo11n_web_model/
+
+# Python ML venv (lives at ~/ml-env, not in repo)
+ml-env/
+__pycache__/
+PULSE_POINT_IMPLEMENTATION_PLAN.md
+pulsepointfuturedecisions.md

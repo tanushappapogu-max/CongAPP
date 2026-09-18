@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Belt-and-suspenders check: refuse to push any commit whose message carries
+# AI-assistant attribution. commit-msg already blocks new ones; this catches
+# anything that slipped in from another machine or an --no-verify commit.
+
+set -euo pipefail
+
+remote="${1:-}"
+url="${2:-}"
+
+patterns='([Cc]o-[Aa]uthored-[Bb]y:.*[Cc]laude|[Cc]o-[Aa]uthored-[Bb]y:.*[Aa]nthropic|noreply@anthropic\.com|Claude-Session:|Generated with Claude Code|Generated with \[Claude Code\]|https?://claude\.ai/(code|chat))'
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip deletions.
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+
+  # Determine which commits are new.
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    range="$local_sha"
+    range_arg="$local_sha"
+  else
+    range="${remote_sha}..${local_sha}"
+    range_arg="$range"
+  fi
+
+  offenders="$(git log --format='%H%n%B%n===END===' "$range_arg" 2>/dev/null | \
+    awk -v pat="$patterns" 'BEGIN{IGNORECASE=1} /^===END===$/ {sha=""; next} !sha && /^[0-9a-f]{40}$/ {sha=$0; next} sha && match($0, pat) {print sha; sha=""}' || true)"
+
+  if [ -n "$offenders" ]; then
+    echo "" >&2
+    echo "pre-push hook: refused push — the following commits contain AI-attribution tags:" >&2
+    echo "$offenders" | sed 's/^/  /' >&2
+    echo "" >&2
+    echo "Rewrite those commit messages before pushing (git rebase -i / git commit --amend)." >&2
+    exit 1
+  fi
+done
+
+exit 0

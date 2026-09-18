@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Blocks any commit whose message carries AI-assistant attribution.
+# Team policy: commits must reflect human authorship for the reviewer of record.
+# If you legitimately want to record co-authorship, do it manually with a real name/email.
+
+set -euo pipefail
+
+msg_file="${1:-}"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  echo "commit-msg hook: expected commit message file argument" >&2
+  exit 1
+fi
+
+msg="$(cat "$msg_file")"
+
+# Patterns that indicate AI-tool attribution we do not want on record.
+patterns=(
+  '(^|[[:space:]])Co-[Aa]uthored-[Bb]y:.*[Cc]laude'
+  '(^|[[:space:]])Co-[Aa]uthored-[Bb]y:.*[Aa]nthropic'
+  'noreply@anthropic\.com'
+  'Claude-Session:'
+  '🤖[[:space:]]*Generated with[[:space:]]*\[?Claude Code\]?'
+  'Generated with Claude Code'
+  'https?://claude\.ai/(code|chat)'
+)
+
+for pat in "${patterns[@]}"; do
+  if echo "$msg" | grep -Eiq -- "$pat"; then
+    echo "" >&2
+    echo "commit-msg hook: refused commit — message contains AI-attribution tag matching /$pat/." >&2
+    echo "Remove the tag and try again. Team policy forbids these markers on any commit." >&2
+    exit 1
+  fi
+done
+
+exit 0
