@@ -18,6 +18,7 @@ try:
         validate_image_headers,
         validate_target,
     )
+    from .locate_model import locate_object, is_available as locate_available
     from .model import predict, INDOOR_OBJECT_ONTOLOGY as INDOOR_OBJECTS
     from .text_model import classify_text, retrain
     from .tea_dataset import TEA_TYPES, FLAVOR_LABELS, QUALITY_TIERS
@@ -34,11 +35,12 @@ except ImportError:  # Supports `uvicorn main:app` from the server directory.
         validate_image_headers,
         validate_target,
     )
+    from locate_model import locate_object, is_available as locate_available
     from model import predict, INDOOR_OBJECT_ONTOLOGY as INDOOR_OBJECTS
     from text_model import classify_text, retrain
     from tea_dataset import TEA_TYPES, FLAVOR_LABELS, QUALITY_TIERS
 
-app = FastAPI(title="Pulse Point Vision + Tea Text API")
+app = FastAPI(title="Pulse Point Vision API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,6 +110,8 @@ async def health():
         "apiVersion": "v1",
         "objects": len(INDOOR_OBJECTS),
         "detector": metadata,
+        "locateAnything": locate_available(),
+        "fallbackObjects": len(INDOOR_OBJECTS),
     }
 
 
@@ -167,12 +171,21 @@ async def detect(
     except ValueError as error:
         return JSONResponse(status_code=400, content={"error": str(error)})
 
-    try:
-        result = predict(image_bytes, target_name=normalized_target or None)
-    except (UnidentifiedImageError, OSError, ValueError) as error:
-        return JSONResponse(status_code=400, content={"error": "Malformed image."})
+    result = None
 
-    # Keep the safety boundary authoritative even if a future model adapter
+    # ── Primary: LocateAnything-3B (open-vocabulary, any target) ──
+    if normalized_target:
+        result = locate_object(image_bytes, normalized_target)
+
+    # ── Fallback: PulsePointNet (indoor-object ontology, ~45 classes) ──
+    if result is None:
+        try:
+            result = predict(image_bytes, target_name=normalized_target or None)
+        except (UnidentifiedImageError, OSError, ValueError) as error:
+            return JSONResponse(status_code=400, content={"error": "Malformed image."})
+
+    # Keep the safety boundary authoritative even if a model adapter (either
+    # the PulsePointNet fallback or the LocateAnything-3B primary path)
     # returns incomplete or overly optimistic metadata.
     response_metadata = detector_metadata()
     if isinstance(result.get("metadata"), dict):
@@ -187,9 +200,7 @@ async def detect(
     result["assistiveReadyProof"] = False
     result["proof"] = False
     result["latency_ms"] = round((time.time() - start) * 1000)
-
     return result
-
 
 
 # ── Text / Tea CNN endpoints ─────────────────────────────────────────────────
@@ -199,14 +210,6 @@ async def classify_text_endpoint(
     text: str = Body(..., embed=True, description="Tea description or spoken query"),
     top_k: int = Body(3, embed=True, description="Number of alternative tea types to return"),
 ):
-    """
-    Run TeaTextCNN on a text string.
-
-    Returns tea type, flavor profile, quality tier, and a 256-dim sentence embedding.
-    The model auto-trains on first call if no checkpoint exists (~5 seconds).
-
-    Example body: {"text": "gyokuro shade-grown umami marine vegetal", "top_k": 3}
-    """
     if not text or not text.strip():
         return JSONResponse(status_code=422, content={"error": "text must be non-empty"})
     if len(text) > 512:
@@ -221,9 +224,8 @@ async def classify_text_endpoint(
 
 @app.get("/tea-schema")
 async def tea_schema():
-    """Return the label ontology used by the TextCNN."""
     return {
-        "tea_types":    TEA_TYPES,
+        "tea_types":     TEA_TYPES,
         "flavor_labels": FLAVOR_LABELS,
         "quality_tiers": QUALITY_TIERS,
     }
@@ -231,7 +233,6 @@ async def tea_schema():
 
 @app.post("/retrain-text")
 async def retrain_text():
-    """Re-train the TeaTextCNN from scratch (runs synchronously, ~5–15 s on CPU)."""
     start = time.time()
     info = retrain()
     info["duration_ms"] = round((time.time() - start) * 1000)
