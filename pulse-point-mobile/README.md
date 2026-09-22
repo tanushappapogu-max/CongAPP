@@ -1,6 +1,12 @@
 # Pulse Point Mobile
 
-Expo mobile app for the Pulse Point / SSE object-finding workflow.
+> [!WARNING]
+> **Status: Exploratory / Degraded Prototype**
+>
+> This directory (`pulse-point-mobile/`) is an **exploratory / degraded prototype** for testing mobile UX concepts and simulated guidance flows. It is **not** the active production/deployable client and does not run real-time local on-device vision models.
+>
+> - **Primary / Active codebase:** `pulse-point/` (Vite + React web app deployed to production).
+> - **Do not apply web app updates, production bug fixes, or general core feature work here** unless explicitly asked to experiment with the Expo prototype. Do not waste time debugging or porting production web features to this folder.
 
 ## Run On Phone
 

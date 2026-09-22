@@ -53,6 +53,11 @@ git rebase -i <sha-before>      # if it is deeper; mark as "reword"
 
 Then re-run the push.
 
+## Codebase Scope & Working Rules
+
+- **Primary Project (`pulse-point/`)**: The active, supported production web application (React + Vite + ONNX Runtime Web). All general features, fixes, and improvements should target `pulse-point/` by default.
+- **Exploratory / Degraded Prototype (`pulse-point-mobile/`)**: The Expo mobile app is an **exploratory / degraded prototype** (simulated detection / UX concept). **Do NOT waste time porting changes, applying general app updates, or fixing bugs in `pulse-point-mobile/`** unless the user specifically and explicitly requests work on the mobile prototype.
+
 ## Everything else
 
 You are free to help with code as usual — the only restriction is

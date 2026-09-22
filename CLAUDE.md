@@ -42,6 +42,10 @@ If `git config core.hooksPath` is not `.githooks`, run:
 ./scripts/setup-git-hooks.sh
 ```
 
+## Codebase Scope
+- The primary, active production app is `pulse-point/` (React + Vite web app).
+- `pulse-point-mobile/` is an **exploratory / degraded prototype** with simulated sensing. Do NOT spend time applying features or bug fixes to `pulse-point-mobile/` unless specifically directed.
+
 ## Everything else
 
 Standard help: reading, editing, planning, running the app, writing

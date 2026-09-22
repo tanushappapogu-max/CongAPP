@@ -52,9 +52,12 @@ npm test           # run unit tests
 npm run build      # production build
 ```
 
-### Mobile App (`pulse-point-mobile`)
+### Mobile App (`pulse-point-mobile`) — *Exploratory / Degraded Prototype*
+ 
+> [!NOTE]
+> `pulse-point-mobile/` is an **exploratory / degraded prototype** for testing mobile UX concepts and simulated guidance. It is **not** the active production client (which is `pulse-point/`). Contributors and agents should **not** waste time applying web updates or core improvements to this folder unless specifically requested.
 
-The real mobile app lives in `pulse-point-mobile`.
+The mobile prototype lives in `pulse-point-mobile`.
 
 ```bash
 cd pulse-point-mobile

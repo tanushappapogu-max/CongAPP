@@ -46,13 +46,13 @@ All tests must pass before a PR can be merged.
 
 ## Sub-project structure
 
-| Directory | What lives here |
-|-----------|-----------------|
-| `pulse-point/` | Vite web app — React + TF.js |
-| `pulse-point-mobile/` | Expo mobile app — React Native |
-| `api/` | Vercel serverless functions |
+| Directory | What lives here | Status |
+|-----------|-----------------|--------|
+| `pulse-point/` | Vite web app — React + TF.js / ONNX Runtime Web | **Primary / Active** — all general features & bug fixes go here |
+| `pulse-point-mobile/` | Expo mobile app — React Native | **Exploratory / Degraded** — prototype only (do not spend time applying general tasks here unless requested) |
+| `api/` | Vercel serverless functions | Active backend proxies |
 
-Keep changes scoped to one sub-project per commit where possible.
+Keep changes scoped to one sub-project per commit where possible. Default to `pulse-point/` for app-level changes.
 
 ## Secrets
 

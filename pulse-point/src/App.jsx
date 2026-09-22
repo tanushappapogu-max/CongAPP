@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Loader2, ScanLine, Square, Mic, Settings as SettingsIcon, Flashlight, FlashlightOff } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon, Flashlight, FlashlightOff } from 'lucide-react';
 
 import { resolveCocoTarget, findClosestCocoLabel, TARGET_ALIASES, normalizeTargetText } from './detection/coco.js';
-import { loadModel, runInference } from './detection/engine.js';
+import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
 import { KNOWN_OBJECTS } from './detection/objectList.js';
@@ -20,7 +20,9 @@ import Announcer from './ui/Announcer.jsx';
 import SettingsSheet from './ui/SettingsSheet.jsx';
 import FeatureGrid from './ui/FeatureGrid.jsx';
 import WelcomeOverlay from './ui/WelcomeOverlay.jsx';
+import StartupProgress from './ui/StartupProgress.jsx';
 import { callGeminiBox } from './detection/ai.js';
+
 
 // CNN architecture displayed in the ribbon (YOLOv8n backbone + FPN + head)
 const ARCH_LAYERS = [
@@ -109,7 +111,7 @@ export default function App() {
 
   const [target,        setTargetState]   = useState('');
   const [draftTarget,   setDraftTarget]   = useState('');
-  const [status,        setStatus]        = useState('ready');
+  const [status,        setStatus]        = useState('idle');
   const [signal,        setSignal]        = useState('looking');
   const [match,         setMatch]         = useState(null);
   const [error,         setError]         = useState('');
@@ -141,6 +143,43 @@ export default function App() {
     }
   });
 
+  // ── Boot progress HUD ───────────────────────────────────────────────────────
+  // Tracks each startup step so StartupProgress.jsx can render accurate state.
+  const BOOT_STEP_IDS = ['camera', 'download', 'compile', 'warmup'];
+
+  function makeSteps() {
+    return [
+      { id: 'camera',   label: 'Camera sensor',          detail: 'Requesting wide-angle feed…', state: 'pending', subPercent: null },
+      { id: 'download', label: 'Neural weights (12.8 MB)', detail: '', state: 'pending', subPercent: null },
+      { id: 'compile',  label: 'ONNX graph compilation', detail: 'Allocating WASM SIMD operators…', state: 'pending', subPercent: null },
+      { id: 'warmup',   label: 'Engine warm-up',         detail: 'Pre-compiling JIT kernels…', state: 'pending', subPercent: null },
+    ];
+  }
+
+  const [bootActive,   setBootActive]   = useState(false);
+  const [bootSteps,    setBootSteps]    = useState(makeSteps);
+  const [bootPct,      setBootPct]      = useState(0);
+  const [isFirstBoot,  setIsFirstBoot]  = useState(false);
+  const bootAbortRef                    = useRef(null);
+
+  /** Update a single boot step by id. Merges the patch object into the existing step. */
+  const patchBootStep = useCallback((id, patch) => {
+    setBootSteps(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+  }, []);
+
+  /** Recalculate overall progress from step states. */
+  function calcBootPct(steps) {
+    const weights = { camera: 10, download: 55, compile: 20, warmup: 15 };
+    let pct = 0;
+    for (const s of steps) {
+      const w = weights[s.id] ?? 10;
+      if (s.state === 'done')   pct += w;
+      else if (s.state === 'active') pct += (w * (s.subPercent ?? 50)) / 100;
+    }
+    return Math.min(100, Math.round(pct));
+  }
+
+
   settingsRef.current = settings;
   announcementRef.current = announcement;
 
@@ -170,6 +209,15 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Background preload on mount ─────────────────────────────────────────────
+  // Kick off the 12.8 MB model download in the background immediately. By the
+  // time the user taps Start, the bytes are already in memory (or the SW cache).
+  // No progress is shown here — this is silent prefetching.
+  useEffect(() => {
+    if (isModelReady()) return; // already warm from a previous session
+    preloadModel().catch(() => { /* non-fatal; will retry on first loadModel call */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     hapticsRef.current.setEnabled(settings.haptics);
@@ -364,6 +412,12 @@ export default function App() {
 
   function stopScanner() {
     sessionRef.current?.stop();
+  }
+
+  /** Cancel the startup boot sequence (user tapped Cancel during boot HUD). */
+  function cancelBoot() {
+    stopScanner();
+    // Boot overlay cleanup is handled by the STOP event handler.
   }
 
   async function toggleTorch() {
@@ -565,6 +619,10 @@ export default function App() {
   }
 
   async function initializeCamera({ target: requestedTarget, signal }) {
+    // ── Boot step: camera ────────────────────────────────────────────────────
+    if (mountedRef.current) {
+      patchBootStep('camera', { state: 'active', detail: 'Requesting camera permission…' });
+    }
     let stream = null;
     try {
       stream = await getWideCameraStream();
@@ -582,23 +640,99 @@ export default function App() {
       if (mountedRef.current) {
         setTorchAvail(hasTorchSupport(stream));
         setTorchOn(false);
-        setStatus('loading');
-        setAnnouncement('Initializing CNN model weights…');
-        setAnnouncementUrgent(false);
         hapticsRef.current.fire('looking', true);
+        patchBootStep('camera', { state: 'done', detail: 'Wide-angle feed active.' });
+        setBootSteps(prev => {
+          const updated = prev.map(s => s.id === 'camera' ? { ...s, state: 'done', detail: 'Wide-angle feed active.' } : s);
+          setBootPct(calcBootPct(updated));
+          return updated;
+        });
       }
       return stream;
     } catch (error) {
+      if (mountedRef.current) {
+        patchBootStep('camera', { state: 'error', detail: error.message || 'Camera access denied.' });
+        setBootActive(false);
+      }
       if (stream) stopSessionCamera(stream);
       throw error;
     }
   }
 
   async function initializeModel({ target: requestedTarget, signal }) {
-    const model = await loadModel();
+    // ── Boot step: download + compile + warmup ───────────────────────────────
+    const onProgress = (progress) => {
+      if (!mountedRef.current || signal.aborted) return;
+
+      if (progress.step === 'download') {
+        setBootSteps(prev => {
+          const updated = prev.map(s => {
+            if (s.id !== 'download') return s;
+            const detail = progress.fromCache
+              ? 'Loaded from offline cache.'
+              : progress.total > 0
+                ? `${(progress.loaded / 1_048_576).toFixed(1)} / ${(progress.total / 1_048_576).toFixed(1)} MB (${progress.percent}%)`
+                : `${(progress.loaded / 1_048_576).toFixed(1)} MB…`;
+            const isDone = progress.percent >= 100;
+            return { ...s, state: isDone ? 'done' : 'active', subPercent: progress.percent, detail };
+          });
+          setBootPct(calcBootPct(updated));
+          return updated;
+        });
+        // detect first-boot from non-cache download
+        if (!progress.fromCache && progress.percent === 0 && mountedRef.current) {
+          setIsFirstBoot(true);
+        }
+      }
+
+      if (progress.step === 'compile') {
+        setBootSteps(prev => {
+          const isDone = progress.percent >= 100;
+          const updated = prev.map(s => {
+            if (s.id === 'download') return { ...s, state: 'done' };
+            if (s.id === 'compile') return { ...s, state: isDone ? 'done' : 'active', detail: progress.message || 'Compiling WASM SIMD graph…', subPercent: null };
+            return s;
+          });
+          setBootPct(calcBootPct(updated));
+          return updated;
+        });
+      }
+
+      if (progress.step === 'warmup') {
+        setBootSteps(prev => {
+          const isDone = progress.percent >= 100;
+          const updated = prev.map(s => {
+            if (s.id === 'compile') return { ...s, state: 'done' };
+            if (s.id === 'warmup') return { ...s, state: isDone ? 'done' : 'active', detail: progress.message || 'Pre-compiling JIT kernels…', subPercent: null };
+            return s;
+          });
+          setBootPct(calcBootPct(updated));
+          return updated;
+        });
+      }
+    };
+
+    // Activate the download step before we start (compile and warmup start later).
+    if (mountedRef.current) {
+      patchBootStep('download', { state: 'active', detail: 'Preparing neural weights…', subPercent: 0 });
+    }
+
+    const model = await loadModel({ onProgress, signal });
+
     if (!signal.aborted && mountedRef.current) {
-      setStatus('looking');
-      setAnnouncement(requestedTarget ? `Looking for ${requestedTarget}.` : 'Camera active. Say or type a target.');
+      // All 4 steps done — close the boot overlay and hand off to active scanning.
+      setBootSteps(makeSteps); // reset for next session
+      setBootPct(100);
+      // Brief display of 100% before dismounting
+      setTimeout(() => {
+        if (mountedRef.current) {
+          setBootActive(false);
+          setBootPct(0);
+          setStatus('looking');
+          setAnnouncement(requestedTarget ? `Looking for ${requestedTarget}.` : 'Camera active. Say or type a target.');
+          speakerRef.current.say('Pulse Point ready.', { urgent: true });
+        }
+      }, 350);
     }
     return model;
   }
@@ -621,12 +755,16 @@ export default function App() {
       isRunningRef.current = false;
       if (!mountedRef.current) return;
       setIsRunning(false);
-      setStatus('ready');
+      setStatus('idle');
       setMatch(null);
       setSignal('looking');
       resetDetectionState();
       setTorchOn(false);
       setTorchAvail(false);
+      // Close the boot overlay if the user cancels during startup
+      setBootActive(false);
+      setBootSteps(makeSteps);
+      setBootPct(0);
       return;
     }
 
@@ -637,11 +775,16 @@ export default function App() {
         isRunningRef.current = true;
         setError('');
         setIsRunning(true);
-        setStatus('camera');
+        setStatus('booting');
         setMatch(null);
         setSignal('looking');
         setAnnouncement('Starting camera…');
         resetDetectionState();
+        // Reset steps and show boot HUD
+        setBootSteps(makeSteps);
+        setBootPct(0);
+        setIsFirstBoot(!isModelReady());
+        setBootActive(true);
         break;
       case SCANNER_EVENTS.TARGET_SET:
         if (isRunningRef.current) {
@@ -654,6 +797,9 @@ export default function App() {
         isRunningRef.current = false;
         setIsRunning(false);
         setStatus('blocked');
+        setBootActive(false);
+        setBootSteps(makeSteps);
+        setBootPct(0);
         setError(event.error?.message || 'Camera blocked. Allow camera access and try again.');
         setTorchOn(false);
         setTorchAvail(false);
@@ -662,6 +808,9 @@ export default function App() {
         isRunningRef.current = false;
         setIsRunning(false);
         setStatus('blocked');
+        setBootActive(false);
+        setBootSteps(makeSteps);
+        setBootPct(0);
         setError(event.error?.message || 'CNN model failed to load. Refresh and try again.');
         setTorchOn(false);
         setTorchAvail(false);
@@ -910,6 +1059,14 @@ export default function App() {
     <>
       <a href="#target-input" className="sr-only skip-link">Skip to search</a>
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
+      {bootActive && (
+        <StartupProgress
+          steps={bootSteps}
+          overallPct={bootPct}
+          onCancel={cancelBoot}
+          isFirstBoot={isFirstBoot}
+        />
+      )}
 
       <main className={`scanner signal-${signal}`}>
       <h1 className="sr-only">Pulse Point Object Finder</h1>
@@ -985,13 +1142,6 @@ export default function App() {
           <SettingsIcon size={18} aria-hidden="true" />
         </button>
       </div>
-
-      {status === 'loading' && (
-        <div className="loading-pill" role="status">
-          <Loader2 size={18} aria-hidden="true" />
-          <span>Loading weights…</span>
-        </div>
-      )}
 
       {/* Feature activation grid — bottom-left */}
       {isRunning && (
@@ -1181,11 +1331,18 @@ export default function App() {
       <div className="signal-strip" aria-live="polite">
         <div className="signal-strip-dot" aria-hidden="true" />
         <div className="signal-strip-text">
-          <strong>{status}</strong>
+          <strong>
+            {status === 'idle'    ? 'idle'    :
+             status === 'booting' ? 'booting' :
+             status}
+          </strong>
           <span>
             {match
               ? `${match.direction} · ${match.distance}`
-              : isRunning ? 'inference running…' : 'point camera at object'}
+              : status === 'idle'    ? 'tap start to scan'
+              : status === 'booting' ? 'starting engine…'
+              : isRunning ? 'inference running…'
+              : 'point camera at object'}
           </span>
         </div>
       </div>
