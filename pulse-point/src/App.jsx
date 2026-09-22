@@ -19,6 +19,8 @@ import { loadSettings, saveSettings } from './lib/settings.js';
 import Announcer from './ui/Announcer.jsx';
 import SettingsSheet from './ui/SettingsSheet.jsx';
 import FeatureGrid from './ui/FeatureGrid.jsx';
+import WelcomeOverlay from './ui/WelcomeOverlay.jsx';
+import { callGeminiBox } from './detection/ai.js';
 
 // CNN architecture displayed in the ribbon (YOLOv8n backbone + FPN + head)
 const ARCH_LAYERS = [
@@ -52,6 +54,7 @@ const ADAPTIVE_FPS_MAX = 15;
 const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
+const CLOUD_AI_COOLDOWN_MS = 5000;
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -83,6 +86,15 @@ export default function App() {
   const lastHeavyRunRef   = useRef(0);
   const aiBoxRef          = useRef(null);
   const aiInFlightRef     = useRef(false);
+  const cloudAiBoxRef     = useRef(null);
+  const cloudAiInFlightRef = useRef(false);
+  const lastCloudAiRunRef = useRef(0);
+  const cloudAiRequestRef = useRef(0);
+
+  const objPanelRef        = useRef(null);
+  const objPanelSearchRef  = useRef(null);
+  const objPanelTriggerRef = useRef(null);
+  const objPanelFocusRef   = useRef(null);
 
   const lightFpsRef       = useRef(ADAPTIVE_FPS_INITIAL);
   const inferenceWindowRef = useRef([]);
@@ -120,6 +132,14 @@ export default function App() {
   const [alternatives,   setAlternatives]   = useState([]);
   const [objPanelOpen,   setObjPanelOpen]   = useState(false);
   const [objFilter,      setObjFilter]      = useState('');
+  const [showWelcome,     setShowWelcome]   = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return !window.localStorage.getItem('pulsepoint_onboarded');
+    } catch {
+      return true;
+    }
+  });
 
   settingsRef.current = settings;
   announcementRef.current = announcement;
@@ -161,11 +181,53 @@ export default function App() {
   // Cycle active layer in the architecture ribbon during inference
   useEffect(() => {
     if (!isRunning) { setActiveLayerIdx(0); return; }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setActiveLayerIdx(0);
+      return;
+    }
     const id = setInterval(() => {
       setActiveLayerIdx(i => (i + 1) % ARCH_LAYERS.length);
     }, 220);
     return () => clearInterval(id);
   }, [isRunning]);
+
+  useEffect(() => {
+    if (!objPanelOpen) return undefined;
+
+    objPanelFocusRef.current = objPanelTriggerRef.current || document.activeElement;
+    objPanelSearchRef.current?.focus();
+
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setObjPanelOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || !objPanelRef.current) return;
+      const focusable = objPanelRef.current.querySelectorAll(
+        'button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      objPanelFocusRef.current?.focus?.();
+      objPanelFocusRef.current = null;
+    };
+  }, [objPanelOpen]);
 
   function setTarget(t) {
     const nextTarget = t.trim();
@@ -181,12 +243,25 @@ export default function App() {
     lastHeavyRunRef.current = 0;
     aiBoxRef.current = null;
     aiInFlightRef.current = false;
+    cloudAiBoxRef.current = null;
+    cloudAiInFlightRef.current = false;
+    lastCloudAiRunRef.current = 0;
+    cloudAiRequestRef.current += 1;
     setServerMs(null);
     setServerLabel('');
     setServerModel('');
     setAlternatives([]);
     resolveLocalTarget(nextTarget);
     sessionRef.current?.setTarget(nextTarget);
+  }
+
+  function dismissWelcome() {
+    try {
+      window.localStorage.setItem('pulsepoint_onboarded', '1');
+    } catch {
+      // Private browsing or blocked storage should not prevent using the app.
+    }
+    setShowWelcome(false);
   }
 
   function resolveLocalTarget(tgt) {
@@ -271,6 +346,10 @@ export default function App() {
     lastHeavyRunRef.current = 0;
     aiBoxRef.current = null;
     aiInFlightRef.current = false;
+    cloudAiBoxRef.current = null;
+    cloudAiInFlightRef.current = false;
+    lastCloudAiRunRef.current = 0;
+    cloudAiRequestRef.current += 1;
     setServerMs(null);
     setServerLabel('');
     setServerModel('');
@@ -360,6 +439,9 @@ export default function App() {
           setAlternatives(result.alternatives || []);
         } else {
           aiBoxRef.current = null;
+          setServerMs(null);
+          setServerLabel('');
+          setServerModel('');
           setAlternatives([]);
         }
       });
@@ -376,10 +458,78 @@ export default function App() {
       source: cocoMatchRaw,
     } : null;
 
-    // ── Merge: use server result when YOLO has no match for the target ──
+    // ── Cloud AI path: Gemini fallback every CLOUD_AI_COOLDOWN_MS ──
+    // Only fires when YOLO and the heavy path have no result. The request is
+    // captured from the current camera frame and runs without blocking the
+    // on-device detection loop.
     const serverResult = aiBoxRef.current;
+    const cloudCooldownOk = now - lastCloudAiRunRef.current >= CLOUD_AI_COOLDOWN_MS;
+    if (
+      cloudCooldownOk &&
+      tgt &&
+      !cocoMatch &&
+      !serverResult &&
+      !aiInFlightRef.current &&
+      !cloudAiInFlightRef.current
+    ) {
+      lastCloudAiRunRef.current = now;
+      cloudAiInFlightRef.current = true;
+      const requestId = ++cloudAiRequestRef.current;
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = frame.width;
+      tempCanvas.height = frame.height;
+      const context = tempCanvas.getContext('2d');
+
+      if (context) {
+        context.drawImage(video, 0, 0, frame.width, frame.height);
+        const base64 = tempCanvas.toDataURL('image/jpeg', 0.75);
+        callGeminiBox(base64, tgt).then(result => {
+          if (cloudAiRequestRef.current !== requestId) return;
+          cloudAiInFlightRef.current = false;
+          if (signal.aborted || !mountedRef.current || targetRef.current !== tgt) return;
+
+          if (result?.__error) {
+            cloudAiBoxRef.current = null;
+            setError('Cloud assist unavailable. Continuing with on-device detection.');
+            return;
+          }
+
+          if (result?.found) {
+            const clamp = value => Math.max(0, Math.min(1, value));
+            const x = clamp(result.x);
+            const y = clamp(result.y);
+            const w = clamp(result.w);
+            const h = clamp(result.h);
+            cloudAiBoxRef.current = {
+              class: tgt,
+              score: result.confidence || 0.8,
+              bbox: [x * frame.width, y * frame.height, w * frame.width, h * frame.height],
+              fromServer: true,
+              model: 'Gemini',
+              alternatives: [],
+              latency_ms: null,
+            };
+          } else {
+            cloudAiBoxRef.current = null;
+          }
+        }).catch(() => {
+          if (cloudAiRequestRef.current !== requestId) return;
+          cloudAiInFlightRef.current = false;
+          cloudAiBoxRef.current = null;
+        });
+      } else {
+        cloudAiInFlightRef.current = false;
+      }
+    }
+
+    // ── Merge: use server, then cloud result when YOLO has no match ──
     const freshMatch = cocoMatch || (tgt && serverResult ? {
       ...serverResult,
+      displayClass: tgt,
+      fromServer: true,
+    } : null) || (tgt && cloudAiBoxRef.current ? {
+      ...cloudAiBoxRef.current,
       displayClass: tgt,
       fromServer: true,
     } : null);
@@ -757,7 +907,12 @@ export default function App() {
   })();
 
   return (
-    <main className={`scanner signal-${signal}`}>
+    <>
+      <a href="#target-input" className="sr-only skip-link">Skip to search</a>
+      {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
+
+      <main className={`scanner signal-${signal}`}>
+      <h1 className="sr-only">Pulse Point Object Finder</h1>
       <video ref={videoRef} playsInline muted aria-hidden="true" />
       <canvas
         ref={canvasRef}
@@ -812,8 +967,11 @@ export default function App() {
         <button
           type="button"
           className="rail-btn"
+          ref={objPanelTriggerRef}
           onClick={() => setObjPanelOpen(v => !v)}
           aria-label="Show trained objects"
+          aria-expanded={objPanelOpen}
+          aria-controls="trained-objects-panel"
           title="Trained objects"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -881,10 +1039,13 @@ export default function App() {
             <span className="cnn-stat-val">8400</span>
           </span>
           <span className="cnn-stat-sep" />
-          <span className={`cnn-stat-item${serverMs != null ? ' cnn-server-active' : ''}`}>
+          <span className={`cnn-stat-item${serverMs != null || cloudAiBoxRef.current ? ' cnn-server-active' : ''}`}>
             <span className="cnn-stat-label">GRND</span>
             <span className="cnn-stat-val">
-              {serverMs != null ? `${serverMs} ms` : isServerAvailable() ? 'ready' : 'off'}
+              {serverMs != null
+                ? `${serverMs} ms`
+                : cloudAiBoxRef.current ? 'cloud'
+                : isServerAvailable() ? 'ready' : 'off'}
             </span>
           </span>
         </div>
@@ -911,12 +1072,20 @@ export default function App() {
 
       {/* Trained objects drawer */}
       {objPanelOpen && (
-        <div className="obj-panel" role="dialog" aria-label="Trained object classes">
+        <div
+          id="trained-objects-panel"
+          className="obj-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="trained-objects-title"
+          ref={objPanelRef}
+        >
           <div className="obj-panel-header">
-            <span className="obj-panel-title">Trained Objects <span className="obj-panel-count">{KNOWN_OBJECTS.length}</span></span>
-            <button type="button" className="obj-panel-close" onClick={() => setObjPanelOpen(false)} aria-label="Close">×</button>
+            <span id="trained-objects-title" className="obj-panel-title">Trained Objects <span className="obj-panel-count">{KNOWN_OBJECTS.length}</span></span>
+            <button type="button" className="obj-panel-close" onClick={() => setObjPanelOpen(false)} aria-label="Close trained objects">×</button>
           </div>
           <input
+            ref={objPanelSearchRef}
             className="obj-panel-search"
             type="text"
             placeholder="filter…"
@@ -983,6 +1152,7 @@ export default function App() {
         <div className="target-display" aria-label="Target object">
           <input
             className="target-input"
+            id="target-input"
             type="text"
             value={draftTarget}
             onChange={e => setDraftTarget(e.target.value)}
@@ -1028,7 +1198,8 @@ export default function App() {
         hapticsAvailable={hapticsAvail}
         speechAvailable={speechAvail}
       />
-    </main>
+      </main>
+    </>
   );
 }
 

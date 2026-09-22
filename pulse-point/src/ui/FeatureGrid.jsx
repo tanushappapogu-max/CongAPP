@@ -45,13 +45,24 @@ export default function FeatureGrid({ active, confidence = 0 }) {
   useEffect(() => {
     const canvases = refs.current.filter(Boolean);
     let t = 0;
+    const reduceMotion = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    const paint = time => {
+      canvases.forEach((c, i) => {
+        const ctx = c.getContext('2d');
+        renderCell(ctx, CELL_SIZE, CELL_SIZE, i, active, conf, time);
+      });
+    };
+
+    if (reduceMotion) {
+      paint(0);
+      return undefined;
+    }
 
     function frame() {
       t += 0.025;
-      canvases.forEach((c, i) => {
-        const ctx = c.getContext('2d');
-        renderCell(ctx, CELL_SIZE, CELL_SIZE, i, active, conf, t);
-      });
+      paint(t);
       rafId.current = requestAnimationFrame(frame);
     }
 
