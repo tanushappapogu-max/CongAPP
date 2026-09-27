@@ -84,7 +84,7 @@ Scan the Expo QR code with Expo Go on your phone. The app uses the phone camera,
 
 ### Web
 
-The Vercel app works in the browser. It requests camera permission, loads `/net.onnx`, runs inference through `/ort-wasm-simd.wasm`, draws boxes around detected objects, locks onto the requested target, estimates direction and distance from the camera frame, and triggers phone vibration where supported. A versioned service-worker cache keeps those immutable assets for faster repeat loads after they have downloaded successfully.
+The Vercel app works in the browser. It requests camera permission, loads the promptable YOLOE model `/yoloe-11s.onnx` and its prompt pack `/prompts/pack.{json,bin}`, runs inference through `/ort-wasm-simd.wasm`, draws boxes around detected objects, locks onto the requested target, estimates direction and distance from the camera frame, and triggers phone vibration where supported. A versioned service-worker cache keeps those immutable assets for faster repeat loads after they have downloaded successfully.
 
 The service worker is not an offline guarantee: camera permission, browser APIs, the first model/runtime download, app-shell navigation, and device support can still require network access or fail. iPhone browsers don't expose reliable vibration APIs and websites can't access iPhone LiDAR room meshes directly, so true haptic guidance and LiDAR mapping belong in the native app.
 
@@ -140,4 +140,4 @@ For local development, `vercel dev` is recommended and runs the serverless funct
 
 ## Acknowledgments
 
-Pulse Point uses [Ultralytics YOLO11n](https://github.com/ultralytics/ultralytics) pretrained weights (Apache 2.0 license) for 80-class COCO object detection. The web deployment uses the checked-in `pulse-point/public/net.onnx` model with [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html)'s WASM provider. All Pulse Point application code is original work by our team. Licensed under the MIT License — see [LICENSE](LICENSE).
+Pulse Point uses [YOLOE](https://github.com/THU-MIG/yoloe) (YOLOE-11s via [Ultralytics](https://github.com/ultralytics/ultralytics), AGPL-3.0) for open-vocabulary detection. The model is exported with prompt embeddings as a live input by `scripts/yoloe/export_promptable.py`, and the prompt pack is built by `scripts/yoloe/build_prompt_pack.py`. Because the model weights are AGPL-3.0, the deployed app's source must stay public. The web deployment uses the checked-in `pulse-point/public/yoloe-11s.onnx` model with [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html)'s WASM provider. All Pulse Point application code is original work by our team. Licensed under the MIT License — see [LICENSE](LICENSE).

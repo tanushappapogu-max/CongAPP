@@ -21,6 +21,11 @@ describe('estimateDistanceMeters', () => {
     expect(estimateDistanceMeters('unicorn', 100, 640)).toBeNull();
   });
 
+  test('explicit reference width works for labels outside the table', () => {
+    const glasses = estimateDistanceMeters('my glasses', 90, 640, 14);
+    expect(glasses).toBeCloseTo(estimateDistanceMeters('laptop', 90, 640) * (14 / 35), 5);
+  });
+
   test('returns null when bbox width is zero', () => {
     expect(estimateDistanceMeters('laptop', 0, 640)).toBeNull();
   });

@@ -43,8 +43,8 @@ export function focalLengthPx(frameWidthPx, hFovDeg = ASSUMED_HFOV_DEG) {
   return (frameWidthPx / 2) / Math.tan((hFovDeg / 2) * Math.PI / 180);
 }
 
-export function estimateDistanceMeters(label, bboxWidthPx, frameWidthPx) {
-  const ref = REFERENCE_WIDTHS_CM[(label || '').toLowerCase()];
+export function estimateDistanceMeters(label, bboxWidthPx, frameWidthPx, refWidthCm = null) {
+  const ref = refWidthCm ?? REFERENCE_WIDTHS_CM[(label || '').toLowerCase()];
   if (!ref || !bboxWidthPx || !frameWidthPx) return null;
   const focal = focalLengthPx(frameWidthPx);
   const distanceCm = (ref * focal) / bboxWidthPx;

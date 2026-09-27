@@ -1,0 +1,795 @@
+{
+ "model": "yoloe-11s",
+ "dim": 512,
+ "sha256": "8ab7235ec8cc73eb282b0fc7aba531c929cd5b8bf6f72b146e1c2a54f8b4adc9",
+ "items": [
+  {
+   "name": "eyeglasses",
+   "aliases": [
+    "glasses",
+    "my glasses",
+    "spectacles",
+    "reading glasses",
+    "specs",
+    "prescription glasses"
+   ],
+   "widthCm": 14,
+   "negatives": [
+    "sunglasses",
+    "glasses case"
+   ]
+  },
+  {
+   "name": "sunglasses",
+   "aliases": [
+    "shades",
+    "my sunglasses",
+    "sun glasses"
+   ],
+   "widthCm": 14,
+   "negatives": [
+    "eyeglasses"
+   ]
+  },
+  {
+   "name": "glasses case",
+   "aliases": [
+    "eyeglass case",
+    "glasses holder"
+   ],
+   "widthCm": 16,
+   "negatives": [
+    "eyeglasses",
+    "wallet"
+   ]
+  },
+  {
+   "name": "keys",
+   "aliases": [
+    "key",
+    "my keys",
+    "car keys",
+    "house keys",
+    "keychain",
+    "key ring",
+    "keyring"
+   ],
+   "widthCm": 6,
+   "negatives": []
+  },
+  {
+   "name": "wallet",
+   "aliases": [
+    "my wallet",
+    "billfold",
+    "card holder"
+   ],
+   "widthCm": 10,
+   "negatives": [
+    "cell phone",
+    "glasses case"
+   ]
+  },
+  {
+   "name": "credit card",
+   "aliases": [
+    "card",
+    "debit card",
+    "bank card",
+    "id card",
+    "my card"
+   ],
+   "widthCm": 8.5,
+   "negatives": [
+    "wallet"
+   ]
+  },
+  {
+   "name": "earbuds",
+   "aliases": [
+    "airpods",
+    "earphones",
+    "earbud case",
+    "airpods case",
+    "ear buds"
+   ],
+   "widthCm": 5,
+   "negatives": []
+  },
+  {
+   "name": "headphones",
+   "aliases": [
+    "headset",
+    "my headphones",
+    "over ear headphones"
+   ],
+   "widthCm": 18,
+   "negatives": [
+    "earbuds"
+   ]
+  },
+  {
+   "name": "wristwatch",
+   "aliases": [
+    "watch",
+    "my watch",
+    "apple watch",
+    "smartwatch"
+   ],
+   "widthCm": 4,
+   "negatives": [
+    "clock"
+   ]
+  },
+  {
+   "name": "pill bottle",
+   "aliases": [
+    "medicine bottle",
+    "pills",
+    "prescription bottle",
+    "medication",
+    "my pills",
+    "medicine"
+   ],
+   "widthCm": 4,
+   "negatives": [
+    "bottle"
+   ]
+  },
+  {
+   "name": "phone charger",
+   "aliases": [
+    "charger",
+    "charging cable",
+    "charging cord",
+    "usb cable",
+    "power adapter"
+   ],
+   "widthCm": 5,
+   "negatives": []
+  },
+  {
+   "name": "mug",
+   "aliases": [
+    "coffee mug",
+    "my mug",
+    "tea mug"
+   ],
+   "widthCm": 9,
+   "negatives": [
+    "wine glass"
+   ]
+  },
+  {
+   "name": "plate",
+   "aliases": [
+    "dish",
+    "dinner plate"
+   ],
+   "widthCm": 25,
+   "negatives": [
+    "bowl"
+   ]
+  },
+  {
+   "name": "toothpaste",
+   "aliases": [
+    "toothpaste tube"
+   ],
+   "widthCm": 5,
+   "negatives": [
+    "toothbrush"
+   ]
+  },
+  {
+   "name": "hairbrush",
+   "aliases": [
+    "hair brush",
+    "brush",
+    "comb"
+   ],
+   "widthCm": 7,
+   "negatives": [
+    "toothbrush"
+   ]
+  },
+  {
+   "name": "shoes",
+   "aliases": [
+    "shoe",
+    "sneakers",
+    "my shoes",
+    "boots"
+   ],
+   "widthCm": 11,
+   "negatives": [
+    "slippers"
+   ]
+  },
+  {
+   "name": "slippers",
+   "aliases": [
+    "slipper",
+    "house shoes",
+    "my slippers"
+   ],
+   "widthCm": 10,
+   "negatives": [
+    "shoes"
+   ]
+  },
+  {
+   "name": "hat",
+   "aliases": [
+    "cap",
+    "baseball cap",
+    "beanie",
+    "my hat"
+   ],
+   "widthCm": 20,
+   "negatives": []
+  },
+  {
+   "name": "jacket",
+   "aliases": [
+    "coat",
+    "hoodie",
+    "my jacket",
+    "sweater"
+   ],
+   "widthCm": 50,
+   "negatives": []
+  },
+  {
+   "name": "pen",
+   "aliases": [
+    "pencil",
+    "marker",
+    "my pen"
+   ],
+   "widthCm": 1.5,
+   "negatives": [
+    "toothbrush"
+   ]
+  },
+  {
+   "name": "envelope",
+   "aliases": [
+    "mail",
+    "letter",
+    "my mail"
+   ],
+   "widthCm": 22,
+   "negatives": [
+    "book"
+   ]
+  },
+  {
+   "name": "white cane",
+   "aliases": [
+    "cane",
+    "my cane",
+    "walking cane",
+    "walking stick"
+   ],
+   "widthCm": 3,
+   "negatives": [
+    "umbrella"
+   ]
+  },
+  {
+   "name": "door",
+   "aliases": [
+    "doorway",
+    "the door",
+    "front door"
+   ],
+   "widthCm": 90,
+   "negatives": [
+    "refrigerator"
+   ]
+  },
+  {
+   "name": "door handle",
+   "aliases": [
+    "doorknob",
+    "door knob"
+   ],
+   "widthCm": 6,
+   "negatives": []
+  },
+  {
+   "name": "light switch",
+   "aliases": [
+    "switch",
+    "lights"
+   ],
+   "widthCm": 7,
+   "negatives": []
+  },
+  {
+   "name": "trash can",
+   "aliases": [
+    "garbage can",
+    "bin",
+    "trash",
+    "garbage",
+    "wastebasket"
+   ],
+   "widthCm": 35,
+   "negatives": []
+  },
+  {
+   "name": "towel",
+   "aliases": [
+    "my towel",
+    "hand towel"
+   ],
+   "widthCm": 50,
+   "negatives": []
+  },
+  {
+   "name": "pillow",
+   "aliases": [
+    "cushion",
+    "my pillow"
+   ],
+   "widthCm": 50,
+   "negatives": []
+  },
+  {
+   "name": "lamp",
+   "aliases": [
+    "desk lamp",
+    "floor lamp"
+   ],
+   "widthCm": 25,
+   "negatives": []
+  },
+  {
+   "name": "tissue box",
+   "aliases": [
+    "tissues",
+    "kleenex"
+   ],
+   "widthCm": 24,
+   "negatives": []
+  },
+  {
+   "name": "soda can",
+   "aliases": [
+    "can",
+    "soda",
+    "pop can",
+    "beer can"
+   ],
+   "widthCm": 6.6,
+   "negatives": [
+    "bottle",
+    "cup"
+   ]
+  },
+  {
+   "name": "box",
+   "aliases": [
+    "package",
+    "parcel",
+    "cardboard box"
+   ],
+   "widthCm": 30,
+   "negatives": []
+  },
+  {
+   "name": "tablet",
+   "aliases": [
+    "ipad",
+    "my tablet"
+   ],
+   "widthCm": 18,
+   "negatives": [
+    "cell phone",
+    "laptop"
+   ]
+  },
+  {
+   "name": "person",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bicycle",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "car",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "motorcycle",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "airplane",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bus",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "train",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "truck",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "boat",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "traffic light",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "fire hydrant",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "stop sign",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "parking meter",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bench",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bird",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "cat",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "dog",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "horse",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "sheep",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "cow",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "elephant",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bear",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "zebra",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "giraffe",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "backpack",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "umbrella",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "handbag",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "tie",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "suitcase",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "frisbee",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "skis",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "snowboard",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "sports ball",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "kite",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "baseball bat",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "baseball glove",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "skateboard",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "surfboard",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "tennis racket",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bottle",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "wine glass",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "cup",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "fork",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "knife",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "spoon",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bowl",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "banana",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "apple",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "sandwich",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "orange",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "broccoli",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "carrot",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "hot dog",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "pizza",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "donut",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "cake",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "chair",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "couch",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "potted plant",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "bed",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "dining table",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "toilet",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "tv",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "laptop",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "mouse",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "remote",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "keyboard",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "cell phone",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "microwave",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "oven",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "toaster",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "sink",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "refrigerator",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "book",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "clock",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "vase",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "scissors",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "teddy bear",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "hair drier",
+   "aliases": [],
+   "negatives": []
+  },
+  {
+   "name": "toothbrush",
+   "aliases": [],
+   "negatives": []
+  }
+ ]
+}

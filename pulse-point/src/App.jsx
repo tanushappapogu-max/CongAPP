@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
-import { resolveCocoTarget, findClosestCocoLabel, TARGET_ALIASES, normalizeTargetText } from './detection/coco.js';
+import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
 import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
@@ -131,10 +131,13 @@ export default function App() {
   }, []);
 
   // ── Background preload on mount ─────────────────────────────────────────────
-  // Kick off the 12.8 MB model download in the background immediately. By the
-  // time the user taps Start, the bytes are already in memory (or the SW cache).
-  // No progress is shown here — this is silent prefetching.
+  // Kick off the model and prompt-pack downloads in the background immediately.
+  // By the time the user taps Start, the bytes are already in memory (or the SW
+  // cache). No progress is shown here — this is silent prefetching.
   useEffect(() => {
+    loadPromptPack().then(() => {
+      if (targetRef.current && !localTargetRef.current) resolveLocalTarget(targetRef.current);
+    }).catch(() => { /* non-fatal; retried when scanning starts */ });
     if (isModelReady()) return; // already warm from a previous session
     preloadModel().catch(() => { /* non-fatal; will retry on first loadModel call */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,15 +182,15 @@ export default function App() {
 
   function resolveLocalTarget(tgt) {
     if (!tgt) return;
-    const direct = resolveCocoTarget(tgt);
-    if (direct) {
-      localTargetRef.current = { label: direct, score: 1, source: 'alias' };
-      return;
-    }
-    const closest = findClosestCocoLabel(tgt);
-    if (closest?.label) {
-      localTargetRef.current = { label: closest.label, score: closest.score, source: 'fuzzy' };
-    }
+    const resolved = resolvePromptTarget(tgt);
+    if (!resolved) return;
+    localTargetRef.current = {
+      label: resolved.item.name,
+      score: resolved.score,
+      source: resolved.source,
+      widthCm: resolved.item.widthCm,
+      prompts: buildPromptSet(resolved.item),
+    };
   }
 
   function submitTypedTarget() {
@@ -306,7 +309,7 @@ export default function App() {
       lastLightRunRef.current = now;
       const t0 = performance.now();
       try {
-        predictions = await runInference(video);
+        predictions = await runInference(video, localTargetRef.current?.prompts ?? null);
         if (signal.aborted) return null;
         lastPredsRef.current = Array.isArray(predictions) ? predictions : [];
         predictions = lastPredsRef.current;
@@ -338,15 +341,14 @@ export default function App() {
       });
     }
 
-    const directLabel = resolveCocoTarget(tgt);
     const localInfo = localTargetRef.current;
-    const mappedLabel = localInfo?.label || directLabel;
+    const mappedLabel = localInfo?.label;
     const priorTrack = trackerRef.current.predict(now);
-    const cocoMatchRaw = mappedLabel ? findTarget(predictions, mappedLabel, priorTrack?.bbox, frame) : null;
-    const cocoMatch = cocoMatchRaw ? {
-      ...cocoMatchRaw,
-      displayClass: mappedLabel !== tgt ? tgt : cocoMatchRaw.class,
-      source: cocoMatchRaw,
+    const localMatchRaw = mappedLabel ? findTarget(predictions, mappedLabel, priorTrack?.bbox, frame) : null;
+    const localMatch = localMatchRaw ? {
+      ...localMatchRaw,
+      displayClass: mappedLabel !== tgt ? tgt : localMatchRaw.class,
+      source: localMatchRaw,
     } : null;
 
     // ── Cloud AI path: Gemini fallback every CLOUD_AI_COOLDOWN_MS ──
@@ -358,7 +360,7 @@ export default function App() {
     if (
       cloudCooldownOk &&
       tgt &&
-      !cocoMatch &&
+      !localMatch &&
       !serverResult &&
       !aiInFlightRef.current &&
       !cloudAiInFlightRef.current
@@ -415,7 +417,7 @@ export default function App() {
     }
 
     // ── Merge: use server, then cloud result when YOLO has no match ──
-    const freshMatch = cocoMatch || (tgt && serverResult ? {
+    const freshMatch = localMatch || (tgt && serverResult ? {
       ...serverResult,
       displayClass: tgt,
       fromServer: true,
@@ -443,6 +445,7 @@ export default function App() {
       score: predicted.confidence,
       fromAi: false,
       ageMs: predicted.ageMs,
+      refWidthCm: localTargetRef.current?.widthCm ?? null,
     } : null;
 
     draw(predictions, displayMatch);
@@ -481,7 +484,8 @@ export default function App() {
   }
 
   async function initializeModel({ target: requestedTarget, signal }) {
-    const model = await loadModel({ signal });
+    const [model] = await Promise.all([loadModel({ signal }), loadPromptPack({ signal })]);
+    if (requestedTarget && !localTargetRef.current) resolveLocalTarget(requestedTarget);
 
     if (!signal.aborted && mountedRef.current) {
       setStatus('looking');
@@ -873,11 +877,8 @@ export default function App() {
 }
 
 function findTarget(predictions, target, priorBox = null, frame = null) {
-  const norm = normalizeTargetText(target);
-  const aliases = TARGET_ALIASES[norm] ? [TARGET_ALIASES[norm]] : [norm];
-
   return predictions
-    .filter(p => aliases.includes(p.class.toLowerCase()))
+    .filter(p => p.class === target)
     .sort((a, b) => {
       if (!priorBox || !frame) return b.score - a.score;
 

@@ -8,23 +8,10 @@ const INPUT_W = 640;
 const INPUT_H = 640;
 const CONF_THRESH = 0.25;
 const IOU_THRESH  = 0.45;
-const NUM_CLASSES = 80;
 const NUM_ANCHORS = 8400;
-const MODEL_URL   = '/net.onnx';
-
-const CLASSES = [
-  'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
-  'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat',
-  'dog','horse','sheep','cow','elephant','bear','zebra','giraffe','backpack',
-  'umbrella','handbag','tie','suitcase','frisbee','skis','snowboard',
-  'sports ball','kite','baseball bat','baseball glove','skateboard','surfboard',
-  'tennis racket','bottle','wine glass','cup','fork','knife','spoon','bowl',
-  'banana','apple','sandwich','orange','broccoli','carrot','hot dog','pizza',
-  'donut','cake','chair','couch','potted plant','bed','dining table','toilet',
-  'tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven',
-  'toaster','sink','refrigerator','book','clock','vase','scissors',
-  'teddy bear','hair drier','toothbrush',
-];
+const MODEL_URL   = '/yoloe-11s.onnx';
+const PROMPT_DIM  = 512;
+export const MODEL_CACHE_NAME = 'pulse-point-model-v3';
 
 // ── Singleton session & preload state ────────────────────────────────────────
 let _session = null;
@@ -61,7 +48,7 @@ async function _fetchModelBuffer({ onProgress, signal } = {}) {
   try {
     const caches_ = typeof caches !== 'undefined' ? caches : null;
     if (caches_) {
-      const cache = await caches_.open('pulse-point-model-v2');
+      const cache = await caches_.open(MODEL_CACHE_NAME);
       const cached = await cache.match(MODEL_URL);
       if (cached) fromCache = true;
     }
@@ -142,8 +129,9 @@ async function _warmupSession(session, onProgress) {
   report(onProgress, { step: 'warmup', percent: 0, message: 'Warming up inference engine…' });
   const dummyBuf = new Float32Array(3 * INPUT_W * INPUT_H); // all zeros
   const dummyInput = new ort.Tensor('float32', dummyBuf, [1, 3, INPUT_H, INPUT_W]);
+  const dummyPe = new ort.Tensor('float32', new Float32Array(PROMPT_DIM), [1, 1, PROMPT_DIM]);
   try {
-    await session.run({ images: dummyInput });
+    await session.run({ images: dummyInput, pe: dummyPe });
   } catch {
     // Warm-up failure is non-fatal; the real first inference may be slower but will work.
   }
@@ -210,7 +198,25 @@ async function _doLoad({ onProgress, signal, skipWarmup }) {
 }
 
 // ── Inference ─────────────────────────────────────────────────────────────────
-export async function runInference(video) {
+let _peCache = { key: null, tensor: null };
+
+function _promptTensor(prompts) {
+  if (_peCache.key !== prompts.key) {
+    _peCache = {
+      key: prompts.key,
+      tensor: new ort.Tensor('float32', prompts.data, [1, prompts.names.length, prompts.dim]),
+    };
+  }
+  return _peCache.tensor;
+}
+
+/**
+ * @param {HTMLVideoElement} video
+ * @param {{ key: string, names: string[], dim: number, data: Float32Array } | null} prompts
+ *   Prompt set from detection/prompts.js; with no prompts there is nothing to look for.
+ */
+export async function runInference(video, prompts) {
+  if (!prompts?.names?.length) return [];
   const session = _session || await loadModel();
 
   const vw = video.videoWidth  || 640;
@@ -240,13 +246,14 @@ export async function runInference(video) {
   }
 
   const input = new ort.Tensor('float32', buf, [1, 3, INPUT_H, INPUT_W]);
-  const out   = await session.run({ images: input });
+  const out   = await session.run({ images: input, pe: _promptTensor(prompts) });
   const raw   = out[Object.keys(out)[0]].data;
+  const numClasses = prompts.names.length;
 
   const hits = [];
   for (let i = 0; i < NUM_ANCHORS; i++) {
     let best = 0, cls = 0;
-    for (let c = 0; c < NUM_CLASSES; c++) {
+    for (let c = 0; c < numClasses; c++) {
       const s = raw[(4 + c) * NUM_ANCHORS + i];
       if (s > best) { best = s; cls = c; }
     }
@@ -262,7 +269,7 @@ export async function runInference(video) {
     const w = bw / scale;
     const h = bh / scale;
 
-    hits.push({ class: CLASSES[cls], score: best, bbox: [x, y, w, h] });
+    hits.push({ class: prompts.names[cls], score: best, bbox: [x, y, w, h] });
   }
 
   return _nms(hits);

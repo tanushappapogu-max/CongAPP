@@ -1,12 +1,15 @@
 // Service worker for Pulse Point.
-// The web detector loads one ONNX model and one ONNX Runtime WASM binary from
-// the public root. Keep this list exact so stale model formats are not mixed
-// into the runtime cache.
-const CACHE_VERSION = 'v2';
+// The web detector loads one ONNX model, its prompt pack, and one ONNX Runtime
+// WASM binary from the public root. Keep this list exact so stale model formats
+// are not mixed into the runtime cache. The prompt pack must match the model, so
+// bump CACHE_VERSION whenever either is rebuilt.
+const CACHE_VERSION = 'v3';
 const MODEL_CACHE = `pulse-point-model-${CACHE_VERSION}`;
 const APP_CACHE   = `pulse-point-app-${CACHE_VERSION}`;
 const MODEL_ASSETS = new Set([
-  '/net.onnx',
+  '/yoloe-11s.onnx',
+  '/prompts/pack.json',
+  '/prompts/pack.bin',
   '/ort-wasm-simd.wasm',
 ]);
 
