@@ -81,3 +81,7 @@ pulsepointfuturedecisions.md
 __pycache__/
 *.pyc
 *.pyo
+
+# YOLOE export tooling (weights, text encoder, and exported ONNX are large build outputs)
+scripts/yoloe/.venv/
+scripts/yoloe/build/

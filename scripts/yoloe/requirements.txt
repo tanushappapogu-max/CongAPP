@@ -1,0 +1,5 @@
+ultralytics>=8.4.68
+onnx>=1.22
+onnxruntime>=1.30
+onnxslim
+git+https://github.com/ultralytics/mobileclip.git
