@@ -85,3 +85,6 @@ __pycache__/
 # YOLOE export tooling (weights, text encoder, and exported ONNX are large build outputs)
 scripts/yoloe/.venv/
 scripts/yoloe/build/
+scripts/depth/.venv/
+scripts/depth/build/
+scripts/depth/sample.jpg

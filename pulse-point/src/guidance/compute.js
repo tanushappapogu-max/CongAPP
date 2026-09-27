@@ -22,7 +22,7 @@ const REACH_AREA = 0.20;
 const NEAR_GROWTH = 1.05;
 
 /**
- * @param {{bbox:[number,number,number,number], class:string, label?:string, fromAi?:boolean, refWidthCm?:number|null}} match
+ * @param {{bbox:[number,number,number,number], class:string, label?:string, fromAi?:boolean, refWidthCm?:number|null, depthMeters?:number|null}} match
  * @param {{width:number,height:number}} frame
  * @param {number} prevArea
  * @returns {{
@@ -44,7 +44,7 @@ export function computeGuidance(match, frame, prevArea) {
   const area = (w * h) / (frame.width * frame.height);
 
   const labelForDistance = (match.class || match.label || '').toLowerCase();
-  const meters = estimateDistanceMeters(labelForDistance, w, frame.width, match.refWidthCm);
+  const meters = match.depthMeters ?? estimateDistanceMeters(labelForDistance, w, frame.width, match.refWidthCm);
   const distanceText = meters != null
     ? describeDistanceMeters(meters)
     : describeDistanceArea(match.bbox, frame);

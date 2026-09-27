@@ -96,3 +96,19 @@ describe('computeGuidance — return shape', () => {
     expect(result.distanceMeters).toBeGreaterThan(0);
   });
 });
+
+describe('computeGuidance — depth readings', () => {
+  test('depth reading takes priority over the width estimate', () => {
+    const box = [300, 220, 40, 40];
+    const byWidth = computeGuidance({ bbox: box, class: 'laptop' }, FRAME, 0);
+    const byDepth = computeGuidance({ bbox: box, class: 'laptop', depthMeters: 0.4 }, FRAME, 0);
+    expect(byWidth.distanceMeters).toBeGreaterThan(2);
+    expect(byDepth.distanceMeters).toBe(0.4);
+    expect(byDepth.signal).toBe('reach');
+  });
+
+  test('without depth, a small centered box is not a reach', () => {
+    const result = computeGuidance({ bbox: [300, 220, 40, 40], class: 'laptop', depthMeters: null }, FRAME, 0);
+    expect(result.signal).not.toBe('reach');
+  });
+});

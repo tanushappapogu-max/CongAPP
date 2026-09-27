@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
+import { preloadDepth, measureDepth, isDepthBusy } from './detection/depth.js';
+import { currentDepthMeters } from './detection/depthSample.js';
 import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
@@ -27,6 +29,7 @@ const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
 const CLOUD_AI_COOLDOWN_MS = 5000;
+const DEPTH_INTERVAL_MS = 1500;
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -46,6 +49,8 @@ export default function App() {
   const prevAreaRef       = useRef(0);
   const foundOnceRef      = useRef(false);
   const localTargetRef    = useRef(null);
+  const depthReadingRef   = useRef(null);
+  const lastDepthRunRef   = useRef(0);
   const targetRef         = useRef('');
   const isRunningRef      = useRef(false);
   const settingsRef       = useRef(null);
@@ -167,6 +172,8 @@ export default function App() {
     cloudAiInFlightRef.current = false;
     lastCloudAiRunRef.current = 0;
     cloudAiRequestRef.current += 1;
+    depthReadingRef.current = null;
+    lastDepthRunRef.current = 0;
     resolveLocalTarget(nextTarget);
     sessionRef.current?.setTarget(nextTarget);
   }
@@ -266,6 +273,8 @@ export default function App() {
     cloudAiInFlightRef.current = false;
     lastCloudAiRunRef.current = 0;
     cloudAiRequestRef.current += 1;
+    depthReadingRef.current = null;
+    lastDepthRunRef.current = 0;
   }
 
   function startScanner(startTarget = targetRef.current) {
@@ -427,6 +436,15 @@ export default function App() {
       fromServer: true,
     } : null);
 
+    if (freshMatch && ranLight && now - lastDepthRunRef.current >= DEPTH_INTERVAL_MS && !isDepthBusy()) {
+      lastDepthRunRef.current = now;
+      const depthBox = freshMatch.bbox;
+      measureDepth(video, depthBox).then(meters => {
+        if (meters == null || signal.aborted || !mountedRef.current || targetRef.current !== tgt) return;
+        depthReadingRef.current = { meters, boxWidth: depthBox[2], at: performance.now(), target: tgt };
+      });
+    }
+
     if (freshMatch && ranLight) {
       trackerRef.current.update(
         freshMatch.bbox,
@@ -446,6 +464,7 @@ export default function App() {
       fromAi: false,
       ageMs: predicted.ageMs,
       refWidthCm: localTargetRef.current?.widthCm ?? null,
+      depthMeters: currentDepthMeters(depthReadingRef.current, tgt, predicted.bbox[2], now),
     } : null;
 
     draw(predictions, displayMatch);
@@ -486,6 +505,7 @@ export default function App() {
   async function initializeModel({ target: requestedTarget, signal }) {
     const [model] = await Promise.all([loadModel({ signal }), loadPromptPack({ signal })]);
     if (requestedTarget && !localTargetRef.current) resolveLocalTarget(requestedTarget);
+    void preloadDepth();
 
     if (!signal.aborted && mountedRef.current) {
       setStatus('looking');

@@ -23,7 +23,7 @@ Tracker + smoothing (tracker.js)
         |
         v
 Distance + direction computation
-(distance.js + guidance/compute.js)
+(depth worker meters, else distance.js widths + guidance/compute.js)
         |
         v
 Guidance outputs
@@ -36,9 +36,10 @@ Guidance outputs
 - React + Vite frontend handles camera access and render loop.
 - `detection/engine.js` loads `/yoloe-11s.onnx` with `onnxruntime-web` and the WASM execution provider. With `simd: true` and `numThreads: 1`, the deployed runtime asset is `/ort-wasm-simd.wasm`. The model takes two inputs: `images` (1×3×640×640) and `pe` (1×K×512 prompt embeddings, K dynamic), and returns `output0` (1×(4+K)×8400).
 - `detection/prompts.js` loads `/prompts/pack.json` + `/prompts/pack.bin` (precomputed YOLOE text embeddings built by `scripts/yoloe/build_prompt_pack.py`). A target resolves through pack names/aliases, then the existing COCO aliases in `coco.js`, then fuzzy matching. Each search feeds the target's vector plus its look-alike negatives (e.g. eyeglasses vs. sunglasses), so a box only counts when it scores highest for the target. Pack items carry a real-world width used by `distance.js`. Targets outside the pack fall through to the server and Gemini paths.
+- `detection/depth.js` + `depth.worker.js` run Depth Anything V2 Metric-Indoor-Small (`/depth-indoor-small.onnx`, uint8 weights, exported by `scripts/depth/export_depth.py`) in a Web Worker with its own ONNX Runtime instance, so it never blocks detection. About every 1.5 s while the target is visible, the current frame is measured at a 518 px short side and `depthSample.js` takes a foreground-biased percentile of the depth inside the target box. Between measurements the reading is carried forward by box-width ratio, and it expires after 8 s. `compute.js` prefers these meters and falls back to width-based distance.
 - `tracker.js` stabilizes noisy frame-to-frame detections.
 - `compute.js` determines directional guidance (`left`, `right`, `up`, `down`, `locked`, `closer`, `reach`).
-- `public/sw.js` uses a versioned cache-first strategy for the exact immutable assets `/yoloe-11s.onnx`, `/prompts/pack.json`, `/prompts/pack.bin`, and `/ort-wasm-simd.wasm`. The pack must come from the same checkpoint as the model, so bump `CACHE_VERSION` whenever either is rebuilt.
+- `public/sw.js` uses a versioned cache-first strategy for the exact immutable assets `/yoloe-11s.onnx`, `/prompts/pack.json`, `/prompts/pack.bin`, `/depth-indoor-small.onnx`, and `/ort-wasm-simd.wasm`. The pack must come from the same checkpoint as the model, so bump `CACHE_VERSION` whenever either is rebuilt.
 - Cached assets can speed up repeat loads after a successful download, but the service worker does not guarantee offline camera access, navigation, or inference on every browser.
 
 ## Mobile App (`pulse-point-mobile/`)
