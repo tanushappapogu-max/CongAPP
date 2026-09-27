@@ -1,55 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon, Flashlight, FlashlightOff } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
 import { resolveCocoTarget, findClosestCocoLabel, TARGET_ALIASES, normalizeTargetText } from './detection/coco.js';
 import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
-import { KNOWN_OBJECTS } from './detection/objectList.js';
 import { createScannerSession, SCANNER_EVENTS } from './scanner/scannerSession.js';
 
 import { computeGuidance } from './guidance/compute.js';
 import { Haptics } from './guidance/haptics.js';
 import { Speaker } from './guidance/speech.js';
 
-import { getWideCameraStream, setWidestZoom, hasTorchSupport, setTorch, stopStream } from './lib/camera.js';
+import { getWideCameraStream, setWidestZoom, stopStream } from './lib/camera.js';
 import { startListening, isVoiceSupported, extractTarget } from './lib/voice.js';
 import { loadSettings, saveSettings } from './lib/settings.js';
 
 import Announcer from './ui/Announcer.jsx';
 import SettingsSheet from './ui/SettingsSheet.jsx';
-import FeatureGrid from './ui/FeatureGrid.jsx';
 import WelcomeOverlay from './ui/WelcomeOverlay.jsx';
-import StartupProgress from './ui/StartupProgress.jsx';
 import { callGeminiBox } from './detection/ai.js';
 
-
-// CNN architecture displayed in the ribbon (YOLOv8n backbone + FPN + head)
-const ARCH_LAYERS = [
-  { id: 'input', label: 'INPUT',   dim: '3×640' },
-  { id: 'c1',    label: 'CONV',    dim: '32×320' },
-  { id: 'p1',    label: 'POOL',    dim: '32×160' },
-  { id: 'c2',    label: 'CONV',    dim: '64×80'  },
-  { id: 'p2',    label: 'POOL',    dim: '64×40'  },
-  { id: 'c3',    label: 'CONV',    dim: '128×20' },
-  { id: 'fpn',   label: 'FPN',     dim: '3×128'  },
-  { id: 'head',  label: 'HEAD',    dim: '8400×85'},
-  { id: 'nms',   label: 'NMS',     dim: 'detect' },
-];
-
-// Right-side layer depth panel (deep path through backbone)
-const LAYER_STACK = [
-  { name: 'CONV2D',     dim: '32×320×320', fill: 1.0 },
-  { name: 'BATCHNORM',  dim: '32',         fill: 1.0 },
-  { name: 'C2F-BLOCK',  dim: '64×160×160', fill: 0.85 },
-  { name: 'CONV2D',     dim: '128×80×80',  fill: 0.72 },
-  { name: 'C2F-BLOCK',  dim: '128×80×80',  fill: 0.65 },
-  { name: 'CONV2D',     dim: '256×40×40',  fill: 0.52 },
-  { name: 'C2F-BLOCK',  dim: '256×40×40',  fill: 0.44 },
-  { name: 'SPPF',       dim: '512×20×20',  fill: 0.35 },
-  { name: 'FPN-UP',     dim: '256×40×40',  fill: 0.28 },
-  { name: 'DETECT',     dim: '85×8400',    fill: 0.18 },
-];
 
 const ADAPTIVE_FPS_MIN = 4;
 const ADAPTIVE_FPS_MAX = 15;
@@ -93,10 +63,6 @@ export default function App() {
   const lastCloudAiRunRef = useRef(0);
   const cloudAiRequestRef = useRef(0);
 
-  const objPanelRef        = useRef(null);
-  const objPanelSearchRef  = useRef(null);
-  const objPanelTriggerRef = useRef(null);
-  const objPanelFocusRef   = useRef(null);
 
   const lightFpsRef       = useRef(ADAPTIVE_FPS_INITIAL);
   const inferenceWindowRef = useRef([]);
@@ -121,19 +87,8 @@ export default function App() {
   const [mode,          setMode]          = useState('normal');
   const [settings,      setSettings]      = useState(() => loadSettings());
   const [settingsOpen,  setSettingsOpen]  = useState(false);
-  const [torchOn,       setTorchOn]       = useState(false);
-  const [torchAvail,    setTorchAvail]    = useState(false);
   const [announcement,  setAnnouncement]  = useState('');
   const [announcementUrgent, setAnnouncementUrgent] = useState(false);
-  const [cnnMs,          setCnnMs]          = useState(null);
-  const [cnnConf,        setCnnConf]        = useState(null);
-  const [serverMs,       setServerMs]       = useState(null);
-  const [serverLabel,    setServerLabel]    = useState('');
-  const [serverModel,    setServerModel]    = useState('');
-  const [activeLayerIdx, setActiveLayerIdx] = useState(0);
-  const [alternatives,   setAlternatives]   = useState([]);
-  const [objPanelOpen,   setObjPanelOpen]   = useState(false);
-  const [objFilter,      setObjFilter]      = useState('');
   const [showWelcome,     setShowWelcome]   = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -143,41 +98,6 @@ export default function App() {
     }
   });
 
-  // ── Boot progress HUD ───────────────────────────────────────────────────────
-  // Tracks each startup step so StartupProgress.jsx can render accurate state.
-  const BOOT_STEP_IDS = ['camera', 'download', 'compile', 'warmup'];
-
-  function makeSteps() {
-    return [
-      { id: 'camera',   label: 'Camera sensor',          detail: 'Requesting wide-angle feed…', state: 'pending', subPercent: null },
-      { id: 'download', label: 'Neural weights (12.8 MB)', detail: '', state: 'pending', subPercent: null },
-      { id: 'compile',  label: 'ONNX graph compilation', detail: 'Allocating WASM SIMD operators…', state: 'pending', subPercent: null },
-      { id: 'warmup',   label: 'Engine warm-up',         detail: 'Pre-compiling JIT kernels…', state: 'pending', subPercent: null },
-    ];
-  }
-
-  const [bootActive,   setBootActive]   = useState(false);
-  const [bootSteps,    setBootSteps]    = useState(makeSteps);
-  const [bootPct,      setBootPct]      = useState(0);
-  const [isFirstBoot,  setIsFirstBoot]  = useState(false);
-  const bootAbortRef                    = useRef(null);
-
-  /** Update a single boot step by id. Merges the patch object into the existing step. */
-  const patchBootStep = useCallback((id, patch) => {
-    setBootSteps(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
-  }, []);
-
-  /** Recalculate overall progress from step states. */
-  function calcBootPct(steps) {
-    const weights = { camera: 10, download: 55, compile: 20, warmup: 15 };
-    let pct = 0;
-    for (const s of steps) {
-      const w = weights[s.id] ?? 10;
-      if (s.state === 'done')   pct += w;
-      else if (s.state === 'active') pct += (w * (s.subPercent ?? 50)) / 100;
-    }
-    return Math.min(100, Math.round(pct));
-  }
 
 
   settingsRef.current = settings;
@@ -226,57 +146,6 @@ export default function App() {
     saveSettings(settings);
   }, [settings]);
 
-  // Cycle active layer in the architecture ribbon during inference
-  useEffect(() => {
-    if (!isRunning) { setActiveLayerIdx(0); return; }
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setActiveLayerIdx(0);
-      return;
-    }
-    const id = setInterval(() => {
-      setActiveLayerIdx(i => (i + 1) % ARCH_LAYERS.length);
-    }, 220);
-    return () => clearInterval(id);
-  }, [isRunning]);
-
-  useEffect(() => {
-    if (!objPanelOpen) return undefined;
-
-    objPanelFocusRef.current = objPanelTriggerRef.current || document.activeElement;
-    objPanelSearchRef.current?.focus();
-
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setObjPanelOpen(false);
-        return;
-      }
-
-      if (event.key !== 'Tab' || !objPanelRef.current) return;
-      const focusable = objPanelRef.current.querySelectorAll(
-        'button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])'
-      );
-      if (!focusable.length) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      objPanelFocusRef.current?.focus?.();
-      objPanelFocusRef.current = null;
-    };
-  }, [objPanelOpen]);
-
   function setTarget(t) {
     const nextTarget = t.trim();
     targetRef.current = nextTarget;
@@ -295,10 +164,6 @@ export default function App() {
     cloudAiInFlightRef.current = false;
     lastCloudAiRunRef.current = 0;
     cloudAiRequestRef.current += 1;
-    setServerMs(null);
-    setServerLabel('');
-    setServerModel('');
-    setAlternatives([]);
     resolveLocalTarget(nextTarget);
     sessionRef.current?.setTarget(nextTarget);
   }
@@ -398,10 +263,6 @@ export default function App() {
     cloudAiInFlightRef.current = false;
     lastCloudAiRunRef.current = 0;
     cloudAiRequestRef.current += 1;
-    setServerMs(null);
-    setServerLabel('');
-    setServerModel('');
-    setAlternatives([]);
   }
 
   function startScanner(startTarget = targetRef.current) {
@@ -412,21 +273,6 @@ export default function App() {
 
   function stopScanner() {
     sessionRef.current?.stop();
-  }
-
-  /** Cancel the startup boot sequence (user tapped Cancel during boot HUD). */
-  function cancelBoot() {
-    stopScanner();
-    // Boot overlay cleanup is handled by the STOP event handler.
-  }
-
-  async function toggleTorch() {
-    const stream = streamRef.current;
-    const nextValue = !torchOn;
-    const ok = await setTorch(stream, nextValue);
-    if (ok && mountedRef.current && stream === streamRef.current && isRunningRef.current) {
-      setTorchOn(nextValue);
-    }
   }
 
   function recordInferenceTime(ms) {
@@ -466,7 +312,6 @@ export default function App() {
         predictions = lastPredsRef.current;
         const elapsed = performance.now() - t0;
         recordInferenceTime(elapsed);
-        if (mountedRef.current) setCnnMs(Math.round(elapsed));
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('Inference error', e);
@@ -487,16 +332,8 @@ export default function App() {
         if (signal.aborted || !mountedRef.current) return;
         if (result) {
           aiBoxRef.current = result;
-          setServerMs(result.latency_ms ?? null);
-          setServerLabel(result.class);
-          setServerModel(result.model || '');
-          setAlternatives(result.alternatives || []);
         } else {
           aiBoxRef.current = null;
-          setServerMs(null);
-          setServerLabel('');
-          setServerModel('');
-          setAlternatives([]);
         }
       });
     }
@@ -619,10 +456,6 @@ export default function App() {
   }
 
   async function initializeCamera({ target: requestedTarget, signal }) {
-    // ── Boot step: camera ────────────────────────────────────────────────────
-    if (mountedRef.current) {
-      patchBootStep('camera', { state: 'active', detail: 'Requesting camera permission…' });
-    }
     let stream = null;
     try {
       stream = await getWideCameraStream();
@@ -638,101 +471,22 @@ export default function App() {
       if (signal.aborted) return stream;
 
       if (mountedRef.current) {
-        setTorchAvail(hasTorchSupport(stream));
-        setTorchOn(false);
         hapticsRef.current.fire('looking', true);
-        patchBootStep('camera', { state: 'done', detail: 'Wide-angle feed active.' });
-        setBootSteps(prev => {
-          const updated = prev.map(s => s.id === 'camera' ? { ...s, state: 'done', detail: 'Wide-angle feed active.' } : s);
-          setBootPct(calcBootPct(updated));
-          return updated;
-        });
       }
       return stream;
     } catch (error) {
-      if (mountedRef.current) {
-        patchBootStep('camera', { state: 'error', detail: error.message || 'Camera access denied.' });
-        setBootActive(false);
-      }
       if (stream) stopSessionCamera(stream);
       throw error;
     }
   }
 
   async function initializeModel({ target: requestedTarget, signal }) {
-    // ── Boot step: download + compile + warmup ───────────────────────────────
-    const onProgress = (progress) => {
-      if (!mountedRef.current || signal.aborted) return;
-
-      if (progress.step === 'download') {
-        setBootSteps(prev => {
-          const updated = prev.map(s => {
-            if (s.id !== 'download') return s;
-            const detail = progress.fromCache
-              ? 'Loaded from offline cache.'
-              : progress.total > 0
-                ? `${(progress.loaded / 1_048_576).toFixed(1)} / ${(progress.total / 1_048_576).toFixed(1)} MB (${progress.percent}%)`
-                : `${(progress.loaded / 1_048_576).toFixed(1)} MB…`;
-            const isDone = progress.percent >= 100;
-            return { ...s, state: isDone ? 'done' : 'active', subPercent: progress.percent, detail };
-          });
-          setBootPct(calcBootPct(updated));
-          return updated;
-        });
-        // detect first-boot from non-cache download
-        if (!progress.fromCache && progress.percent === 0 && mountedRef.current) {
-          setIsFirstBoot(true);
-        }
-      }
-
-      if (progress.step === 'compile') {
-        setBootSteps(prev => {
-          const isDone = progress.percent >= 100;
-          const updated = prev.map(s => {
-            if (s.id === 'download') return { ...s, state: 'done' };
-            if (s.id === 'compile') return { ...s, state: isDone ? 'done' : 'active', detail: progress.message || 'Compiling WASM SIMD graph…', subPercent: null };
-            return s;
-          });
-          setBootPct(calcBootPct(updated));
-          return updated;
-        });
-      }
-
-      if (progress.step === 'warmup') {
-        setBootSteps(prev => {
-          const isDone = progress.percent >= 100;
-          const updated = prev.map(s => {
-            if (s.id === 'compile') return { ...s, state: 'done' };
-            if (s.id === 'warmup') return { ...s, state: isDone ? 'done' : 'active', detail: progress.message || 'Pre-compiling JIT kernels…', subPercent: null };
-            return s;
-          });
-          setBootPct(calcBootPct(updated));
-          return updated;
-        });
-      }
-    };
-
-    // Activate the download step before we start (compile and warmup start later).
-    if (mountedRef.current) {
-      patchBootStep('download', { state: 'active', detail: 'Preparing neural weights…', subPercent: 0 });
-    }
-
-    const model = await loadModel({ onProgress, signal });
+    const model = await loadModel({ signal });
 
     if (!signal.aborted && mountedRef.current) {
-      // All 4 steps done — close the boot overlay and hand off to active scanning.
-      setBootSteps(makeSteps); // reset for next session
-      setBootPct(100);
-      // Brief display of 100% before dismounting
-      setTimeout(() => {
-        if (mountedRef.current) {
-          setBootActive(false);
-          setBootPct(0);
-          setStatus('looking');
-          setAnnouncement(requestedTarget ? `Looking for ${requestedTarget}.` : 'Camera active. Say or type a target.');
-          speakerRef.current.say('Pulse Point ready.', { urgent: true });
-        }
-      }, 350);
+      setStatus('looking');
+      setAnnouncement(requestedTarget ? `Looking for ${requestedTarget}.` : 'Camera active. Say or type a target.');
+      speakerRef.current.say('Pulse Point ready.', { urgent: true });
     }
     return model;
   }
@@ -759,12 +513,6 @@ export default function App() {
       setMatch(null);
       setSignal('looking');
       resetDetectionState();
-      setTorchOn(false);
-      setTorchAvail(false);
-      // Close the boot overlay if the user cancels during startup
-      setBootActive(false);
-      setBootSteps(makeSteps);
-      setBootPct(0);
       return;
     }
 
@@ -780,11 +528,6 @@ export default function App() {
         setSignal('looking');
         setAnnouncement('Starting camera…');
         resetDetectionState();
-        // Reset steps and show boot HUD
-        setBootSteps(makeSteps);
-        setBootPct(0);
-        setIsFirstBoot(!isModelReady());
-        setBootActive(true);
         break;
       case SCANNER_EVENTS.TARGET_SET:
         if (isRunningRef.current) {
@@ -797,23 +540,13 @@ export default function App() {
         isRunningRef.current = false;
         setIsRunning(false);
         setStatus('blocked');
-        setBootActive(false);
-        setBootSteps(makeSteps);
-        setBootPct(0);
         setError(event.error?.message || 'Camera blocked. Allow camera access and try again.');
-        setTorchOn(false);
-        setTorchAvail(false);
         break;
       case SCANNER_EVENTS.MODEL_ERROR:
         isRunningRef.current = false;
         setIsRunning(false);
         setStatus('blocked');
-        setBootActive(false);
-        setBootSteps(makeSteps);
-        setBootPct(0);
         setError(event.error?.message || 'CNN model failed to load. Refresh and try again.');
-        setTorchOn(false);
-        setTorchAvail(false);
         break;
       default:
         break;
@@ -832,7 +565,6 @@ export default function App() {
       distanceMeters: guidance?.distanceMeters ?? null,
       fromAi: false,
     });
-    setCnnConf(Math.round(displayMatch.score * 100));
   }
 
   function handleGuidance(guidance) {
@@ -1045,28 +777,10 @@ export default function App() {
     ctx.fillText(coordTxt, x + 3, Math.min(displayH - 4, y + bh + 11));
   }
 
-  // Build alternatives list for confidence histogram
-  const confBars = (() => {
-    if (match && cnnConf != null) {
-      const top = [{ name: match.name, confidence: cnnConf / 100 }];
-      const alts = alternatives.slice(0, 4).filter(a => a.name !== match.name);
-      return [...top, ...alts].slice(0, 5);
-    }
-    return alternatives.slice(0, 5);
-  })();
-
   return (
     <>
       <a href="#target-input" className="sr-only skip-link">Skip to search</a>
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
-      {bootActive && (
-        <StartupProgress
-          steps={bootSteps}
-          overallPct={bootPct}
-          onCancel={cancelBoot}
-          isFirstBoot={isFirstBoot}
-        />
-      )}
 
       <main className={`scanner signal-${signal}`}>
       <h1 className="sr-only">Pulse Point Object Finder</h1>
@@ -1086,53 +800,8 @@ export default function App() {
         </button>
       )}
 
-      {/* CNN status badge — top-left */}
-      <div className={`cnn-badge${isRunning ? ' cnn-active' : ''}`} aria-hidden="true">
-        <span className="cnn-dot" />
-        <span className="cnn-label">CNN</span>
-        {isRunning && cnnMs != null && <span className="cnn-ms">{cnnMs}ms</span>}
-      </div>
-
-      {/* Architecture ribbon — top-center, only when running */}
-      {isRunning && (
-        <div className="arch-ribbon" aria-hidden="true">
-          {ARCH_LAYERS.map((layer, i) => (
-            <React.Fragment key={layer.id}>
-              <div className={`arch-node${i === activeLayerIdx ? ' arch-active' : i < activeLayerIdx ? ' arch-done' : ''}`}>
-                <span className="arch-node-name">{layer.label}</span>
-                <span className="arch-node-dim">{layer.dim}</span>
-              </div>
-              {i < ARCH_LAYERS.length - 1 && <span className="arch-arrow">›</span>}
-            </React.Fragment>
-          ))}
-        </div>
-      )}
-
       {/* Top-right control rail */}
       <div className="top-rail" role="group" aria-label="Quick controls">
-        {torchAvail && (
-          <button
-            type="button"
-            className={`rail-btn${torchOn ? ' active' : ''}`}
-            onClick={toggleTorch}
-            aria-label={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
-            aria-pressed={torchOn}
-          >
-            {torchOn ? <Flashlight size={18} aria-hidden="true" /> : <FlashlightOff size={18} aria-hidden="true" />}
-          </button>
-        )}
-        <button
-          type="button"
-          className="rail-btn"
-          ref={objPanelTriggerRef}
-          onClick={() => setObjPanelOpen(v => !v)}
-          aria-label="Show trained objects"
-          aria-expanded={objPanelOpen}
-          aria-controls="trained-objects-panel"
-          title="Trained objects"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        </button>
         <button
           type="button"
           className="rail-btn"
@@ -1143,150 +812,12 @@ export default function App() {
         </button>
       </div>
 
-      {/* Feature activation grid — bottom-left */}
-      {isRunning && (
-        <FeatureGrid active={!!match} confidence={cnnConf ?? 0} />
-      )}
-
-      {/* Layer depth panel — right side */}
-      {isRunning && (
-        <div className="layer-panel" aria-hidden="true">
-          {LAYER_STACK.map((layer, i) => {
-            const isActive = match && i === Math.floor(activeLayerIdx / ARCH_LAYERS.length * LAYER_STACK.length);
-            return (
-              <div key={i} className={`layer-row${isActive ? ' layer-active' : ''}`}>
-                <div className="layer-bar-track">
-                  <div
-                    className="layer-bar-fill"
-                    style={{ height: `${(match ? layer.fill : layer.fill * 0.25) * 100}%` }}
-                  />
-                </div>
-                <div className="layer-info">
-                  <span className="layer-name">{layer.name}</span>
-                  <span className="layer-dim">{layer.dim}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* CNN inference stats bar */}
-      {isRunning && (
-        <div className="cnn-stats" aria-hidden="true">
-          <span className="cnn-stat-item">
-            <span className="cnn-stat-label">INFER</span>
-            <span className="cnn-stat-val">{cnnMs != null ? `${cnnMs} ms` : '—'}</span>
-          </span>
-          <span className="cnn-stat-sep" />
-          <span className="cnn-stat-item">
-            <span className="cnn-stat-label">CONF</span>
-            <span className="cnn-stat-val">{cnnConf != null ? `${cnnConf}%` : '—'}</span>
-          </span>
-          <span className="cnn-stat-sep" />
-          <span className="cnn-stat-item">
-            <span className="cnn-stat-label">ANCHORS</span>
-            <span className="cnn-stat-val">8400</span>
-          </span>
-          <span className="cnn-stat-sep" />
-          <span className={`cnn-stat-item${serverMs != null || cloudAiBoxRef.current ? ' cnn-server-active' : ''}`}>
-            <span className="cnn-stat-label">GRND</span>
-            <span className="cnn-stat-val">
-              {serverMs != null
-                ? `${serverMs} ms`
-                : cloudAiBoxRef.current ? 'cloud'
-                : isServerAvailable() ? 'ready' : 'off'}
-            </span>
-          </span>
-        </div>
-      )}
-
-      {/* Confidence histogram — bottom-right */}
-      {isRunning && confBars.length > 0 && (
-        <div className="conf-hist" aria-hidden="true">
-          <div className="conf-hist-title">CLASS PROB</div>
-          {confBars.map((bar, i) => (
-            <div key={i} className="conf-bar-row">
-              <span className="conf-bar-label">{bar.name}</span>
-              <div className="conf-bar-track">
-                <div
-                  className={`conf-bar-fill ${i === 0 ? 'top' : 'alt'}`}
-                  style={{ width: `${Math.round((bar.confidence ?? 0) * 100)}%` }}
-                />
-              </div>
-              <span className="conf-bar-pct">{Math.round((bar.confidence ?? 0) * 100)}%</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Trained objects drawer */}
-      {objPanelOpen && (
-        <div
-          id="trained-objects-panel"
-          className="obj-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="trained-objects-title"
-          ref={objPanelRef}
-        >
-          <div className="obj-panel-header">
-            <span id="trained-objects-title" className="obj-panel-title">Trained Objects <span className="obj-panel-count">{KNOWN_OBJECTS.length}</span></span>
-            <button type="button" className="obj-panel-close" onClick={() => setObjPanelOpen(false)} aria-label="Close trained objects">×</button>
-          </div>
-          <input
-            ref={objPanelSearchRef}
-            className="obj-panel-search"
-            type="text"
-            placeholder="filter…"
-            value={objFilter}
-            onChange={e => setObjFilter(e.target.value)}
-            autoComplete="off"
-          />
-          <div className="obj-panel-list">
-            {(objFilter
-              ? KNOWN_OBJECTS.filter(o => o.includes(objFilter.toLowerCase()))
-              : KNOWN_OBJECTS
-            ).map(obj => (
-              <button
-                key={obj}
-                type="button"
-                className="obj-chip"
-                onClick={() => {
-                  setObjPanelOpen(false);
-                  setError('');
-                  setTarget(obj);
-                  setDraftTarget(obj);
-                  if (!isRunningRef.current) startScanner(obj);
-                  else setStatus('looking');
-                }}
-              >
-                {obj}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {error && (
         <div className="error-pill" role="alert">
           {error}
           <button type="button" className="error-dismiss" onClick={() => setError('')} aria-label="Dismiss error">×</button>
         </div>
       )}
-
-      <div className="scan-sweep" aria-hidden="true" />
-
-      <div className="reticle" aria-hidden="true">
-        <div className="reticle-inner">
-          <div className="reticle-corner reticle-corner--tl" />
-          <div className="reticle-corner reticle-corner--tr" />
-          <div className="reticle-corner reticle-corner--bl" />
-          <div className="reticle-corner reticle-corner--br" />
-          <div className="reticle-dot" />
-          <div className="reticle-scan" />
-        </div>
-      </div>
 
       <div className="target-bar">
         <button
@@ -1326,25 +857,6 @@ export default function App() {
         >
           {isRunning ? <Square size={18} aria-hidden="true" /> : <ScanLine size={20} aria-hidden="true" />}
         </button>
-      </div>
-
-      <div className="signal-strip" aria-live="polite">
-        <div className="signal-strip-dot" aria-hidden="true" />
-        <div className="signal-strip-text">
-          <strong>
-            {status === 'idle'    ? 'idle'    :
-             status === 'booting' ? 'booting' :
-             status}
-          </strong>
-          <span>
-            {match
-              ? `${match.direction} · ${match.distance}`
-              : status === 'idle'    ? 'tap start to scan'
-              : status === 'booting' ? 'starting engine…'
-              : isRunning ? 'inference running…'
-              : 'point camera at object'}
-          </span>
-        </div>
       </div>
 
       <SettingsSheet
