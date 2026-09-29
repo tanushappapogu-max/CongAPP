@@ -24,8 +24,8 @@ async function fetchModel(url) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-async function createSession() {
-  if (self.navigator?.gpu) {
+async function createSession(forceCpu) {
+  if (!forceCpu && self.navigator?.gpu) {
     try {
       const session = await ort.InferenceSession.create(await fetchModel(MODELS.webgpu), {
         ...OPTIONS,
@@ -47,9 +47,9 @@ async function createSession() {
   return session;
 }
 
-function getSession() {
+function getSession(forceCpu) {
   if (!sessionPromise) {
-    sessionPromise = createSession().catch(err => {
+    sessionPromise = createSession(forceCpu).catch(err => {
       sessionPromise = null;
       throw err;
     });
@@ -73,7 +73,7 @@ function toTensor(pixels, width, height) {
 self.onmessage = async ({ data }) => {
   const { id, type } = data;
   try {
-    const session = await getSession();
+    const session = await getSession(data.forceCpu);
     if (type === 'load') {
       self.postMessage({ id, ok: true, backend });
       return;

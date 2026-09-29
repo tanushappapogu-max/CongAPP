@@ -1,3 +1,5 @@
+import { FLAGS } from '../lib/flags.js';
+
 // Main-thread client for the metric depth worker. One measurement at a time; callers skip
 // frames while it's busy and fall back to width-based distance when depth is unavailable.
 
@@ -45,7 +47,7 @@ function call(message, transfer = []) {
 }
 
 export function isDepthAvailable() {
-  return !failed && typeof Worker !== 'undefined';
+  return !FLAGS.noDepth && !failed && typeof Worker !== 'undefined';
 }
 
 export function isDepthBusy() {
@@ -60,7 +62,7 @@ export function getDepthBackend() {
 /** Start downloading and compiling the depth model in the background. Never throws. */
 export function preloadDepth() {
   if (!isDepthAvailable()) return Promise.resolve(false);
-  return call({ type: 'load' }).then(() => true).catch(() => {
+  return call({ type: 'load', forceCpu: FLAGS.forceCpu }).then(() => true).catch(() => {
     failed = true;
     return false;
   });
@@ -96,7 +98,7 @@ export async function measureDepth(video, bbox) {
   busy = true;
   try {
     const result = await call(
-      { type: 'run', pixels, width, height, boxRel: [x / vw, y / vh, w / vw, h / vh] },
+      { type: 'run', forceCpu: FLAGS.forceCpu, pixels, width, height, boxRel: [x / vw, y / vh, w / vw, h / vh] },
       [pixels],
     );
     return result.meters ?? null;

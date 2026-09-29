@@ -1,5 +1,6 @@
 import * as ort from 'onnxruntime-web/webgpu';
 import { COCO_LABELS } from './coco.js';
+import { FLAGS } from '../lib/flags.js';
 
 ort.env.wasm.numThreads = 1;
 ort.env.logLevel = 'error';
@@ -30,6 +31,7 @@ function hasWebGPU() {
   if (!_gpuPromise) {
     _gpuPromise = (async () => {
       try {
+        if (FLAGS.forceCpu) return false;
         return typeof navigator !== 'undefined' && !!navigator.gpu && !!(await navigator.gpu.requestAdapter());
       } catch {
         return false;
