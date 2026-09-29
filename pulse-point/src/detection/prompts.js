@@ -27,6 +27,7 @@ export function parsePromptPack(meta, buffer) {
       aliases: raw.aliases || [],
       negatives: raw.negatives || [],
       widthCm: raw.widthCm ?? REFERENCE_WIDTHS_CM[raw.name] ?? null,
+      coco: raw.coco ?? (COCO_SET.has(raw.name) ? raw.name : null),
       index,
     };
     byName.set(item.name, item);
@@ -120,6 +121,6 @@ export function buildPromptSet(item, pack = _pack) {
     names: members.map(m => m.name),
     dim: pack.dim,
     data,
-    cocoLabel: COCO_SET.has(item.name) ? item.name : null,
+    cocoLabel: item.coco,
   };
 }

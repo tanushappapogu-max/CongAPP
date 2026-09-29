@@ -9,6 +9,7 @@ const META = {
     { name: 'eyeglasses', aliases: ['glasses', 'my glasses', 'reading glasses'], widthCm: 14, negatives: ['sunglasses'] },
     { name: 'sunglasses', aliases: ['shades'], widthCm: 14, negatives: ['eyeglasses'] },
     { name: 'pen', aliases: ['pencil'], widthCm: 1.5, negatives: [] },
+    { name: 'wristwatch', aliases: ['watch'], widthCm: 4, negatives: [], coco: 'clock' },
     { name: 'cup', aliases: [], negatives: [] },
     { name: 'couch', aliases: [], negatives: [] },
     { name: 'cell phone', aliases: [], negatives: [] },
@@ -78,6 +79,7 @@ describe('buildPromptSet', () => {
   test('marks COCO targets so the YOLO11n backup can find them', () => {
     expect(buildPromptSet(pack.byName.get('cup'), pack).cocoLabel).toBe('cup');
     expect(buildPromptSet(pack.byName.get('eyeglasses'), pack).cocoLabel).toBeNull();
+    expect(buildPromptSet(pack.byName.get('wristwatch'), pack).cocoLabel).toBe('clock');
   });
 
   test('copies the right rows for a later item', () => {

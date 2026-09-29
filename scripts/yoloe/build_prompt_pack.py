@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import torch
 from ultralytics import YOLOE
 
 HERE = Path(__file__).parent
@@ -36,7 +37,12 @@ def main():
     (HERE / "build").mkdir(exist_ok=True)
     os.chdir(HERE / "build")
     net = YOLOE(WEIGHTS.replace("-seg.pt", ".yaml")).load(WEIGHTS).model.eval()
-    vectors = net.get_text_pe(names, cache_clip_model=True)[0].numpy().astype(np.float32)
+    # An item's vector is the renormalized mean of its prompt phrases (default: just its name).
+    prompt_lists = [i.get("prompts") or [i["name"]] for i in items]
+    phrases = sorted({p for ps in prompt_lists for p in ps})
+    base = net.get_text_pe(phrases, cache_clip_model=True)[0]
+    rows = [torch.nn.functional.normalize(base[[phrases.index(p) for p in ps]].mean(0), dim=-1) for ps in prompt_lists]
+    vectors = torch.stack(rows).numpy().astype(np.float32)
     assert vectors.shape == (len(names), 512)
 
     OUT.mkdir(parents=True, exist_ok=True)
