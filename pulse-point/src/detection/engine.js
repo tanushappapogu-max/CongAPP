@@ -103,6 +103,7 @@ function openSession(slot, useGpu) {
 
 /** Start downloading whichever detector this device will use first. */
 export async function preloadModel() {
+  if (FLAGS.noDetect) return null;
   const gpu = await hasWebGPU();
   return fetchBytes(gpu ? models.yoloe : models.yolo);
 }
@@ -117,6 +118,7 @@ export function getDetectorInfo() {
 }
 
 export async function loadModel({ signal } = {}) {
+  if (FLAGS.noDetect) return true;
   const gpu = await hasWebGPU();
   if (gpu) {
     try {
@@ -181,7 +183,7 @@ function promptTensor(prompts) {
  *   Prompt set from detection/prompts.js; with no prompts there is nothing to look for.
  */
 export async function runInference(video, prompts) {
-  if (!prompts?.names?.length) return [];
+  if (FLAGS.noDetect || !prompts?.names?.length) return [];
   const detector = chooseDetector(prompts);
   if (!detector) return [];
 
@@ -206,6 +208,7 @@ export async function runInference(video, prompts) {
     buf[n + i]     = px[i * 4 + 1] / 255;
     buf[2 * n + i] = px[i * 4 + 2] / 255;
   }
+  if (FLAGS.captureOnly) return [];
   const images = new ort.Tensor('float32', buf, [1, 3, INPUT_H, INPUT_W]);
 
   let raw, numClasses, labelFor;
