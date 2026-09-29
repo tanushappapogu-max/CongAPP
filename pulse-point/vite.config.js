@@ -8,4 +8,7 @@ export default defineConfig({
     // Pre-bundling rewrites import.meta.url, which ONNX Runtime uses to locate its .wasm file.
     exclude: ['onnxruntime-web'],
   },
+  worker: {
+    format: 'es',
+  },
 });

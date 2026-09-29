@@ -1,14 +1,12 @@
 // Camera helpers: pick the widest back camera, set min zoom, toggle torch,
 // capture a JPEG of the current frame.
 
-// 720p is plenty: detection sees a 640 px frame and depth a 518 px one, and 1080p only adds
-// decode and copy work that phones feel.
 export async function getWideCameraStream() {
   const base = {
     video: {
       facingMode: { ideal: 'environment' },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
       aspectRatio: { ideal: 16 / 9 },
     },
     audio: false,
@@ -25,8 +23,8 @@ export async function getWideCameraStream() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       deviceId: { exact: wide.deviceId },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
     },
     audio: false,
   });

@@ -3,8 +3,6 @@
 Inputs:  images (1, 3, 640, 640) float32 in [0, 1]; pe (1, K, 512) prompt embeddings, K is dynamic
 Output:  output0 (1, 4 + K, 8400) — cx, cy, w, h rows then one sigmoid score row per prompt
 
-Also writes an fp16-weight copy for WebGPU (half the size, faster on phone GPUs, scores within 0.003).
-
 The head is left unfused so the browser can swap prompts per search instead of baking classes in.
 
 Usage (from repo root):
@@ -14,7 +12,6 @@ Usage (from repo root):
 """
 import argparse
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -24,9 +21,6 @@ import torch
 from torch import nn
 from ultralytics import YOLOE
 from ultralytics.nn.modules.head import YOLOEDetect
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from onnx_fp16 import to_fp16  # noqa: E402
 
 BUILD = Path(__file__).parent / "build"
 IMGSZ = 640
@@ -81,9 +75,6 @@ def main():
         dynamo=False,
     )
     print(f"wrote {out_path} ({out_path.stat().st_size / 1e6:.1f} MB)")
-    fp16_path = out_path.with_suffix(".fp16.onnx")
-    to_fp16(str(out_path), str(fp16_path))
-    print(f"wrote {fp16_path} ({fp16_path.stat().st_size / 1e6:.1f} MB)")
 
     sess = ort.InferenceSession(str(out_path), providers=["CPUExecutionProvider"])
     for names in (["eyeglasses", "sunglasses", "keys"], ["eyeglasses", "keys", "remote control", "wallet", "mug"]):

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
-import { measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
+import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
 import { currentDepthMeters } from './detection/depthSample.js';
 import { loadModel, runInference, preloadModel, isModelReady, getDetectorInfo } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
@@ -28,9 +28,7 @@ const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
 // GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
-const IS_PHONE = typeof navigator !== 'undefined'
-  && (navigator.userAgentData?.mobile === true || /Android|iPhone|iPod/i.test(navigator.userAgent));
-const DEPTH_INTERVAL_MS = IS_PHONE ? 2000 : 500;
+const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 1500 };
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -159,33 +157,16 @@ export default function App() {
     const onError = (e) => { lastError = String(e.message || e.reason?.message || e.reason || 'error').slice(0, 120); };
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onError);
-    // Crash breadcrumb: a killed tab never runs pagehide, so a snapshot without `clean` means the
-    // previous session died; show what it was doing.
-    const KEY = 'pulsepoint_debug_last';
-    const started = Date.now();
-    let crashNote = '';
-    try {
-      const prev = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (prev && !prev.clean) crashNote = `last run died after ${Math.round((prev.at - prev.started) / 1000)}s: ${prev.summary}`;
-    } catch { /* storage may be blocked */ }
-    const markClean = () => {
-      try { localStorage.setItem(KEY, JSON.stringify({ clean: true })); } catch { /* ignore */ }
-    };
-    window.addEventListener('pagehide', markClean);
     const id = setInterval(() => {
       const times = inferenceWindowRef.current;
       const avgMs = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
       const label = localTargetRef.current?.label;
       const best = label ? Math.max(0, ...lastPredsRef.current.filter(p => p.class === label).map(p => p.score)) : null;
       const heap = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null;
-      const info = { ...getDetectorInfo(), depth: getDepthBackend(), avgMs, label, best, heap, lastError, crashNote };
-      setDebugInfo(info);
-      const summary = `yoloe ${info.yoloe} yolo ${info.yolo} depth ${info.depth} ${avgMs}ms target ${label} heap ${heap}MB ${lastError}`;
-      try { localStorage.setItem(KEY, JSON.stringify({ started, at: Date.now(), summary, clean: false })); } catch { /* ignore */ }
+      setDebugInfo({ ...getDetectorInfo(), depth: getDepthBackend(), avgMs, label, best, heap, lastError });
     }, 500);
     return () => {
       clearInterval(id);
-      window.removeEventListener('pagehide', markClean);
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onError);
     };
@@ -397,7 +378,8 @@ export default function App() {
       fromServer: true,
     } : null);
 
-    if (freshMatch && ranLight && now - lastDepthRunRef.current >= DEPTH_INTERVAL_MS && !isDepthBusy()) {
+    const depthInterval = DEPTH_INTERVAL_MS[getDepthBackend()] ?? DEPTH_INTERVAL_MS.wasm;
+    if (freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()) {
       lastDepthRunRef.current = now;
       const depthBox = freshMatch.bbox;
       measureDepth(video, depthBox).then(meters => {
@@ -466,6 +448,7 @@ export default function App() {
   async function initializeModel({ target: requestedTarget, signal }) {
     const [model] = await Promise.all([loadModel({ signal }), loadPromptPack({ signal })]);
     if (requestedTarget && !localTargetRef.current) resolveLocalTarget(requestedTarget);
+    void preloadDepth();
 
     if (!signal.aborted && mountedRef.current) {
       setStatus('looking');
@@ -541,15 +524,14 @@ export default function App() {
     if (!mountedRef.current) return;
     const displayMatch = detection;
     const guidance = event.guidance;
-    const next = {
+    setMatch({
       name: displayMatch.displayClass || displayMatch.class,
+      score: displayMatch.score,
       direction: guidance?.direction,
       distance: guidance?.distance,
-    };
-    // The overlay canvas redraws every frame on its own; React only needs to re-render when this
-    // text changes, not ~60 times a second.
-    setMatch(prev => (prev && prev.name === next.name && prev.direction === next.direction
-      && prev.distance === next.distance ? prev : next));
+      distanceMeters: guidance?.distanceMeters ?? null,
+      fromAi: false,
+    });
   }
 
   function handleGuidance(guidance) {
@@ -785,7 +767,7 @@ export default function App() {
         <pre className="debug-readout" aria-hidden="true">
           {`yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'}
 frame ${debugInfo.avgMs ?? '-'} ms · target ${debugInfo.label ?? '-'} · best ${debugInfo.best == null ? '-' : debugInfo.best.toFixed(2)}
-heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}${debugInfo.crashNote ? `\n${debugInfo.crashNote}` : ''}`}
+heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
         </pre>
       )}
 
