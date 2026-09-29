@@ -1,69 +1,63 @@
 # Pulse Point Architecture
 
-This document summarizes the core end-to-end flow for both the web and mobile prototypes.
+This document describes the supported browser app and the adjacent experimental services. `pulse-point/` is the active web client. `pulse-point-mobile/` is a separate exploratory/degraded prototype, not an equivalent production client.
 
 ## High-Level Data Flow
 
 ```text
-User voice/text target
+Web voice/text target
         |
         v
-Target extraction (voice.js)
+Target extraction and prompt-pack resolution
+        |
+        +--> Local detector selected by device and target
+        |      WebGPU: YOLOE prompt detector
+        |      CPU: YOLO11n for COCO targets; YOLOE on demand otherwise
+        |
+        +--> Optional server request every ~2.5 seconds when configured
+        |      Local match wins; server result is used if local has no match
         |
         v
-Prompt-pack resolution (prompts.js): target + look-alike negatives
+Tracker + temporal smoothing
         |
         v
-Web: promptable YOLOE-11s ONNX/WASM inference loop (detection/engine.js)
-Mobile: configured experimental server detector
-        (or explicit demo-only simulation)
+Depth sample / width estimate + direction computation
         |
         v
-Tracker + smoothing (tracker.js)
-        |
-        v
-Distance + direction computation
-(depth worker meters, else distance.js widths + guidance/compute.js)
-        |
-        v
-Guidance outputs
-  - Haptics pattern (guidance/haptics.js)
-  - Speech prompts (guidance/speech.js, lib/voice.js)
+Prototype haptics and speech output
 ```
 
 ## Web App (`pulse-point/`)
 
 - React + Vite frontend handles camera access and render loop.
-- `detection/engine.js` loads `/yoloe-11s.onnx` with `onnxruntime-web/webgpu`, preferring the WebGPU execution provider and falling back to single-threaded WASM when the browser has no usable GPU. `/net.onnx` (YOLO11n, 80 COCO classes) is the backup: devices without WebGPU use it for COCO targets because it is about 4× lighter than YOLOE on the CPU, loading YOLOE on demand only for targets outside COCO, and it takes over entirely if YOLOE fails to load. Vite emits the ONNX Runtime binary as a content-hashed `/assets/ort-wasm-simd-threaded.asyncify-*.wasm`, shared by the engine and the depth worker. The model takes two inputs: `images` (1×3×640×640) and `pe` (1×K×512 prompt embeddings, K dynamic), and returns `output0` (1×(4+K)×8400).
-- `detection/prompts.js` loads `/prompts/pack.json` + `/prompts/pack.bin` (precomputed YOLOE text embeddings built by `scripts/yoloe/build_prompt_pack.py`). A target resolves through pack names/aliases, then the existing COCO aliases in `coco.js`, then fuzzy matching. Each search feeds the target's vector plus its look-alike negatives (e.g. eyeglasses vs. sunglasses), so a box only counts when it scores highest for the target. Pack items carry a real-world width used by `distance.js`. Targets outside the pack fall through to the server and Gemini paths.
-- `detection/depth.js` + `depth.worker.js` run Depth Anything V2 Metric-Indoor-Small in a Web Worker with its own ONNX Runtime instance, so it never blocks detection. The worker uses `/depth-indoor-small.fp16.onnx` on WebGPU and falls back to `/depth-indoor-small.uint8.onnx` on WASM; both are exported from the same graph by `scripts/depth/export_depth.py`. While the target is visible it measures every 0.5 s on WebGPU or 1.5 s on WASM: the current frame is measured at a 518 px short side and `depthSample.js` takes a foreground-biased percentile of the depth inside the target box. Between measurements the reading is carried forward by box-width ratio, and it expires after 8 s. `compute.js` prefers these meters and falls back to width-based distance.
+- `detection/engine.js` runs YOLOE locally with WebGPU when available; its ONNX Runtime Web session can use WASM when WebGPU is unavailable. On CPU, YOLO11n (`/net.onnx`, 80 COCO classes) is the normal local detector for targets with a COCO label because it is lighter than YOLOE. YOLOE loads on demand for other targets represented by the prompt pack. If YOLOE fails to load on the WebGPU path, the engine tries YOLO11n, which still has only COCO coverage. Vite emits a content-hashed ONNX Runtime WASM asset for the app.
+- `detection/prompts.js` loads `/prompts/pack.json` and `/prompts/pack.bin` (precomputed YOLOE text embeddings built by `scripts/yoloe/build_prompt_pack.py`). Targets resolve through the pack's names/aliases and COCO aliases/fuzzy matching. Prompt sets include look-alike negatives where available. Local inference requires a resolved prompt set; this is a finite prompt pack, not arbitrary natural-language understanding. Pack items may include a reference width for the distance fallback.
+- If `VITE_SERVER_URL` is configured and its health check passes, `App.jsx` starts a remote request roughly every 2.5 seconds while a target is set, regardless of whether local detection currently has a match. `server.js` captures the current camera frame as JPEG and uploads it with the target. The app gives a local match precedence and uses a returned server result only when local matching has no result. Therefore, remote results are fallback results, but remote requests are not currently gated on local failure. The server is optional, experimental, and unvalidated.
+- `detection/depth.js` and `depth.worker.js` run Depth Anything V2 Metric-Indoor-Small in a Web Worker. The worker uses the FP16 asset with WebGPU and the uint8 asset with WASM; `depthSample.js` samples the detected box, and `compute.js` prefers a recent depth reading before using its width-based estimate. These estimates have not been validated for safety or across representative environments.
 - `tracker.js` stabilizes noisy frame-to-frame detections.
-- `compute.js` determines directional guidance (`left`, `right`, `up`, `down`, `locked`, `closer`, `reach`).
-- `public/sw.js` uses a versioned cache-first strategy for the exact immutable assets `/yoloe-11s.onnx`, `/prompts/pack.json`, `/prompts/pack.bin`, `/depth-indoor-small.fp16.onnx`, and `/depth-indoor-small.uint8.onnx`, plus the hashed ONNX Runtime binary under `/assets/`. The pack must come from the same checkpoint as the model, so bump `CACHE_VERSION` whenever either is rebuilt.
+- `compute.js` determines directional guidance (`left`, `right`, `up`, `down`, `locked`, `closer`, `reach`). The “reach” signal is a heuristic based on a depth threshold or box area, not confirmation that reaching or moving is safe.
+- `public/sw.js` uses a versioned cache for selected model, prompt, depth, and ONNX Runtime assets. Caching can improve repeat loads after successful downloads; it does not guarantee offline camera access, app navigation, or inference on every browser.
 - Cached assets can speed up repeat loads after a successful download, but the service worker does not guarantee offline camera access, navigation, or inference on every browser.
 
 ## Mobile App (`pulse-point-mobile/`)
 
 - Expo app provides the user flow, haptics, and orientation guidance UX.
-- The app requires a configured server detector for normal scanning. Missing configuration, failed health checks, and request errors surface as `UNAVAILABLE`/error; there is no automatic simulation fallback.
-- Simulation is available only through explicit opt-in (`EXPO_PUBLIC_PULSEPOINT_ALLOW_SIMULATION=true` or `extra.pulsepointAllowSimulation: true`), is labeled demo-only, and cannot produce a reach signal.
-- The server `/detect` path is experimental and unvalidated; its response is explicitly never assistive-ready. The mobile prototype makes no production assistive or safety claim.
-- App structure keeps a clear seam for future native detection integration (ML Kit/CoreML/ARKit/ARCore).
+- This is an exploratory/degraded prototype and should not be treated as the active web client. Its camera, haptics, server, and simulation flows are separate from the supported `pulse-point/` implementation.
 
 ## Experimental Python detector (`server/`)
 
 - `/detect` is retained for mobile compatibility; `/v1/detect` is its versioned alias and both use the same bounded handler.
-- The detector maps ImageNet classification probabilities to an indoor-object ontology and uses approximate Grad-CAM for a debug localization overlay. It is not trained or evaluated for bounding-box localization.
-- Responses expose detector version, experimental status, uncalibrated confidence, localization method, supported target metadata, and hard `assistiveReady: false` / `proof: false` signals. Raw probabilities are not multiplied, capped, or subset-renormalized.
+- `/detect` and `/v1/detect` use the same handler. For a nonempty target, the service tries LocateAnything-3B first; if it is unavailable or returns no result, it uses an ImageNet classifier mapped to an indoor-object ontology with approximate Grad-CAM localization. The fallback is not trained or evaluated as a bounding-box detector. The returned LocateAnything score is currently a fixed value, not a calibrated probability.
+- Responses carry experimental/unvalidated metadata and hard `assistiveReady: false` / `proof: false` signals. The shared metadata contract still reports the legacy `approximate/Grad-CAM` localization method, so do not treat that field as a precise description of the LocateAnything path.
 - The boundary validates JPEG/PNG/WebP MIME and decoded content, bounds image and target sizes, limits detector requests per IP, and uses explicit configurable CORS origins. `server/README.md` is the source of the endpoint details.
-- The tea-text classifier routes are unrelated legacy capability and remain functional while the production Pulse Point detector path is undecided.
+- The tea-text classifier routes are unrelated legacy capabilities.
 
 ## AI Proxy (`api/`)
 
 - `/api/ai` is a server-side proxy to OpenRouter/Gemini.
 - API key remains server-only (`OPENROUTER_API_KEY`), never exposed in browser bundle.
 - Existing boundary controls include a model allow-list, max-token cap, strict origin enforcement, per-IP in-memory rate limiting, and a 30-second Vercel function duration.
-- The web app no longer calls it; the Gemini cloud fallback was removed from the detection loop.
+- The web scanner does not call it. It is a legacy endpoint and is not a vision fallback.
 
 ## Error Reporting
 
