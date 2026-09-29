@@ -63,7 +63,7 @@ Guidance outputs
 - `/api/ai` is a server-side proxy to OpenRouter/Gemini.
 - API key remains server-only (`OPENROUTER_API_KEY`), never exposed in browser bundle.
 - Existing boundary controls include a model allow-list, max-token cap, strict origin enforcement, per-IP in-memory rate limiting, and a 30-second Vercel function duration.
-- It remains optional cloud-assist infrastructure; the Python detector's experimental status does not make cloud responses validated assistive sensing.
+- The web app no longer calls it; the Gemini cloud fallback was removed from the detection loop.
 
 ## Error Reporting
 

@@ -16,6 +16,7 @@ const STD = [0.229, 0.224, 0.225];
 
 let sessionPromise = null;
 let backend = null;
+let inputBuf = null;
 
 async function fetchModel(url) {
   const response = await fetch(url);
@@ -59,7 +60,8 @@ function getSession() {
 function toTensor(pixels, width, height) {
   const rgba = new Uint8ClampedArray(pixels);
   const n = width * height;
-  const buf = new Float32Array(3 * n);
+  if (!inputBuf || inputBuf.length !== 3 * n) inputBuf = new Float32Array(3 * n);
+  const buf = inputBuf;
   for (let i = 0; i < n; i++) {
     buf[i]         = (rgba[i * 4]     / 255 - MEAN[0]) / STD[0];
     buf[n + i]     = (rgba[i * 4 + 1] / 255 - MEAN[1]) / STD[1];

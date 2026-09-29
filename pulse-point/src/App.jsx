@@ -4,7 +4,7 @@ import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
 import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
 import { currentDepthMeters } from './detection/depthSample.js';
-import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
+import { loadModel, runInference, preloadModel, isModelReady, getDetectorInfo } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
 import { createScannerSession, SCANNER_EVENTS } from './scanner/scannerSession.js';
@@ -20,7 +20,6 @@ import { loadSettings, saveSettings } from './lib/settings.js';
 import Announcer from './ui/Announcer.jsx';
 import SettingsSheet from './ui/SettingsSheet.jsx';
 import WelcomeOverlay from './ui/WelcomeOverlay.jsx';
-import { callGeminiBox } from './detection/ai.js';
 
 
 const ADAPTIVE_FPS_MIN = 4;
@@ -28,7 +27,6 @@ const ADAPTIVE_FPS_MAX = 15;
 const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
-const CLOUD_AI_COOLDOWN_MS = 5000;
 // GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
 const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 1500 };
 
@@ -64,10 +62,6 @@ export default function App() {
   const lastHeavyRunRef   = useRef(0);
   const aiBoxRef          = useRef(null);
   const aiInFlightRef     = useRef(false);
-  const cloudAiBoxRef     = useRef(null);
-  const cloudAiInFlightRef = useRef(false);
-  const lastCloudAiRunRef = useRef(0);
-  const cloudAiRequestRef = useRef(0);
 
 
   const lightFpsRef       = useRef(ADAPTIVE_FPS_INITIAL);
@@ -87,6 +81,7 @@ export default function App() {
   const [signal,        setSignal]        = useState('looking');
   const [match,         setMatch]         = useState(null);
   const [error,         setError]         = useState('');
+  const [debugInfo,     setDebugInfo]     = useState(null);
   const [isRunning,     setIsRunning]     = useState(false);
   const [hapticsAvail,  setHapticsAvail]  = useState(true);
   const [isListening,   setIsListening]   = useState(false);
@@ -155,6 +150,28 @@ export default function App() {
     saveSettings(settings);
   }, [settings]);
 
+  // Hidden diagnostics for phone testing: add ?debug=1 to the URL.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has('debug')) return undefined;
+    let lastError = '';
+    const onError = (e) => { lastError = String(e.message || e.reason?.message || e.reason || 'error').slice(0, 120); };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onError);
+    const id = setInterval(() => {
+      const times = inferenceWindowRef.current;
+      const avgMs = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
+      const label = localTargetRef.current?.label;
+      const best = label ? Math.max(0, ...lastPredsRef.current.filter(p => p.class === label).map(p => p.score)) : null;
+      const heap = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null;
+      setDebugInfo({ ...getDetectorInfo(), depth: getDepthBackend(), avgMs, label, best, heap, lastError });
+    }, 500);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onError);
+    };
+  }, []);
+
   function setTarget(t) {
     const nextTarget = t.trim();
     targetRef.current = nextTarget;
@@ -169,10 +186,6 @@ export default function App() {
     lastHeavyRunRef.current = 0;
     aiBoxRef.current = null;
     aiInFlightRef.current = false;
-    cloudAiBoxRef.current = null;
-    cloudAiInFlightRef.current = false;
-    lastCloudAiRunRef.current = 0;
-    cloudAiRequestRef.current += 1;
     depthReadingRef.current = null;
     lastDepthRunRef.current = 0;
     resolveLocalTarget(nextTarget);
@@ -270,10 +283,6 @@ export default function App() {
     lastHeavyRunRef.current = 0;
     aiBoxRef.current = null;
     aiInFlightRef.current = false;
-    cloudAiBoxRef.current = null;
-    cloudAiInFlightRef.current = false;
-    lastCloudAiRunRef.current = 0;
-    cloudAiRequestRef.current += 1;
     depthReadingRef.current = null;
     lastDepthRunRef.current = 0;
   }
@@ -361,78 +370,10 @@ export default function App() {
       source: localMatchRaw,
     } : null;
 
-    // ── Cloud AI path: Gemini fallback every CLOUD_AI_COOLDOWN_MS ──
-    // Only fires when YOLO and the heavy path have no result. The request is
-    // captured from the current camera frame and runs without blocking the
-    // on-device detection loop.
+    // ── Merge: use the server result when on-device detection has no match ──
     const serverResult = aiBoxRef.current;
-    const cloudCooldownOk = now - lastCloudAiRunRef.current >= CLOUD_AI_COOLDOWN_MS;
-    if (
-      cloudCooldownOk &&
-      tgt &&
-      !localMatch &&
-      !serverResult &&
-      !aiInFlightRef.current &&
-      !cloudAiInFlightRef.current
-    ) {
-      lastCloudAiRunRef.current = now;
-      cloudAiInFlightRef.current = true;
-      const requestId = ++cloudAiRequestRef.current;
-
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = frame.width;
-      tempCanvas.height = frame.height;
-      const context = tempCanvas.getContext('2d');
-
-      if (context) {
-        context.drawImage(video, 0, 0, frame.width, frame.height);
-        const base64 = tempCanvas.toDataURL('image/jpeg', 0.75);
-        callGeminiBox(base64, tgt).then(result => {
-          if (cloudAiRequestRef.current !== requestId) return;
-          cloudAiInFlightRef.current = false;
-          if (signal.aborted || !mountedRef.current || targetRef.current !== tgt) return;
-
-          if (result?.__error) {
-            cloudAiBoxRef.current = null;
-            setError('Cloud assist unavailable. Continuing with on-device detection.');
-            return;
-          }
-
-          if (result?.found) {
-            const clamp = value => Math.max(0, Math.min(1, value));
-            const x = clamp(result.x);
-            const y = clamp(result.y);
-            const w = clamp(result.w);
-            const h = clamp(result.h);
-            cloudAiBoxRef.current = {
-              class: tgt,
-              score: result.confidence || 0.8,
-              bbox: [x * frame.width, y * frame.height, w * frame.width, h * frame.height],
-              fromServer: true,
-              model: 'Gemini',
-              alternatives: [],
-              latency_ms: null,
-            };
-          } else {
-            cloudAiBoxRef.current = null;
-          }
-        }).catch(() => {
-          if (cloudAiRequestRef.current !== requestId) return;
-          cloudAiInFlightRef.current = false;
-          cloudAiBoxRef.current = null;
-        });
-      } else {
-        cloudAiInFlightRef.current = false;
-      }
-    }
-
-    // ── Merge: use server, then cloud result when YOLO has no match ──
     const freshMatch = localMatch || (tgt && serverResult ? {
       ...serverResult,
-      displayClass: tgt,
-      fromServer: true,
-    } : null) || (tgt && cloudAiBoxRef.current ? {
-      ...cloudAiBoxRef.current,
       displayClass: tgt,
       fromServer: true,
     } : null);
@@ -673,8 +614,11 @@ export default function App() {
     const W = video.videoWidth || 640, H = video.videoHeight || 480;
     const displayW = canvas.clientWidth  || W;
     const displayH = canvas.clientHeight || H;
-    canvas.width  = displayW;
-    canvas.height = displayH;
+    // Resizing reallocates the canvas; doing it every tick churns memory on phones.
+    if (canvas.width !== displayW || canvas.height !== displayH) {
+      canvas.width  = displayW;
+      canvas.height = displayH;
+    }
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, displayW, displayH);
 
@@ -818,6 +762,14 @@ export default function App() {
       />
 
       <Announcer message={announcement} urgent={announcementUrgent} />
+
+      {debugInfo && (
+        <pre className="debug-readout" aria-hidden="true">
+          {`yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'}
+frame ${debugInfo.avgMs ?? '-'} ms · target ${debugInfo.label ?? '-'} · best ${debugInfo.best == null ? '-' : debugInfo.best.toFixed(2)}
+heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
+        </pre>
+      )}
 
       {!isRunning && (
         <button className="start-button" type="button" onClick={startScanner} aria-label="Start CNN scanner">

@@ -87,6 +87,8 @@ function openSession(slot, useGpu) {
         slot.backend = 'wasm';
       }
       slot.session = session;
+      slot.bytes = null; // ORT has its own copy now; don't hold tens of MB twice
+      slot.bytesPromise = null;
       return session;
     })().catch(err => {
       slot.sessionPromise = null;
@@ -145,6 +147,22 @@ function chooseDetector(prompts) {
 
 let _peCache = { key: null, tensor: null };
 
+// One canvas and one input buffer for every frame. Allocating them per frame (~8 MB) makes
+// iOS Safari hit its canvas-memory cap and kill the tab within seconds.
+let _canvas = null;
+let _ctx = null;
+const _input = new Float32Array(3 * INPUT_W * INPUT_H);
+
+function frameContext() {
+  if (!_ctx) {
+    _canvas = document.createElement('canvas');
+    _canvas.width = INPUT_W;
+    _canvas.height = INPUT_H;
+    _ctx = _canvas.getContext('2d', { willReadFrequently: true });
+  }
+  return _ctx;
+}
+
 function promptTensor(prompts) {
   if (_peCache.key !== prompts.key) {
     _peCache = {
@@ -173,17 +191,14 @@ export async function runInference(video, prompts) {
   const padX = Math.round((INPUT_W - sw) / 2);
   const padY = Math.round((INPUT_H - sh) / 2);
 
-  const canvas = document.createElement('canvas');
-  canvas.width  = INPUT_W;
-  canvas.height = INPUT_H;
-  const ctx = canvas.getContext('2d');
+  const ctx = frameContext();
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, INPUT_W, INPUT_H);
   ctx.drawImage(video, padX, padY, sw, sh);
 
   const px = ctx.getImageData(0, 0, INPUT_W, INPUT_H).data;
   const n  = INPUT_W * INPUT_H;
-  const buf = new Float32Array(3 * n);
+  const buf = _input;
   for (let i = 0; i < n; i++) {
     buf[i]         = px[i * 4]     / 255;
     buf[n + i]     = px[i * 4 + 1] / 255;

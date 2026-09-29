@@ -456,3 +456,9 @@ input { font: inherit; touch-action: manipulation; }
 
 /* ── desktop centering ── */
 
+
+.debug-readout {
+  position: absolute; top: 12px; left: 12px; right: 64px; z-index: 5; margin: 0;
+  padding: 6px 8px; border-radius: 8px; background: rgba(0,0,0,0.7); color: #9fffd6;
+  font: 11px/1.4 ui-monospace, monospace; white-space: pre-wrap; pointer-events: none;
+}

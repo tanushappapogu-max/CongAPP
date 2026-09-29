@@ -83,8 +83,10 @@ export async function measureDepth(video, bbox) {
   const width = Math.max(PATCH, Math.round((vw * scale) / PATCH) * PATCH);
   const height = Math.max(PATCH, Math.round((vh * scale) / PATCH) * PATCH);
   canvas ||= document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(video, 0, 0, width, height);

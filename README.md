@@ -11,9 +11,9 @@ Pulse Point is a haptic-first prototype exploring an object-finding interface fo
 
 ## How It Works
 
-The web app runs YOLO11n object detection in-browser with ONNX Runtime Web and its WASM execution provider (no server round-trip for supported COCO classes). Voice input names a target; the COCO label resolver maps natural language ("phone", "TV", "armchair", "loveseat") to the model's 80-class vocabulary through a curated synonym table. The "Trained Objects" list in the UI is scoped to exactly what that resolver can find — every entry there is guaranteed to map to a real, detectable class, so a tap never starts a scan that can't succeed. A bounding-box tracker with EMA-smoothed velocity keeps the lock stable across frames. A pinhole-camera distance model converts bbox size to meters. The guidance engine divides the frame into a center sweet spot and emits one of seven directional haptic signals until the target is centered and within reach.
+The web app runs open-vocabulary detection in the browser with ONNX Runtime Web, on the GPU (WebGPU) when available. Voice or text names a target; it resolves against a prompt pack of precomputed YOLOE vectors (household items plus the 80 COCO classes, with aliases like "my glasses"), and YOLOE searches for the target while scoring it against look-alikes such as sunglasses. YOLO11n is kept as a backup for devices without WebGPU and for when YOLOE fails to load. A bounding-box tracker keeps the lock stable across frames, a metric depth model (Depth Anything V2, in a Web Worker) measures distance in meters, and the guidance engine emits directional haptic and speech signals until the target is centered and within reach. Detection never leaves the device unless a LocateAnything server URL is configured.
 
-A Vercel serverless proxy (`/api/ai`) is already deployed and working for a more capable cloud vision model (Gemini via OpenRouter) that could look up objects outside the local 80-class vocabulary, keeping the API key off the client. It is not yet called from the live detection loop — today it's available infrastructure, not an active fallback — so object-finding is currently bounded to the local vocabulary above.
+The Vercel proxy at `/api/ai` (Gemini via OpenRouter) is no longer called by the app.
 
 ```
 Voice input ──► COCO resolver ──► YOLO loop ──► Box tracker
