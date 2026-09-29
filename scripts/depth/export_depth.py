@@ -1,8 +1,7 @@
 """Export Depth Anything V2 Metric-Indoor-Small to ONNX for the web app.
 
-Writes two variants of the same graph into pulse-point/public/:
-  depth-indoor-small.fp16.onnx   fp16 weights, for the WebGPU backend (~50 MB)
-  depth-indoor-small.uint8.onnx  uint8 dynamic-quantized, for the WASM/CPU backend (~27 MB)
+Writes pulse-point/public/depth-indoor-small.fp16.onnx (fp16 weights, ~50 MB). Depth only runs on
+WebGPU: on the CPU it takes seconds per frame, so CPU-only devices use width-based distance.
 
 Input:  pixel_values (1, 3, H, W) float32, ImageNet-normalized RGB, H and W multiples of 14 (dynamic)
 Output: predicted_depth in meters (indoor head, max 20 m). The legacy exporter bakes the final
@@ -18,19 +17,19 @@ Usage (from repo root):
   scripts/depth/.venv/bin/pip install -r scripts/depth/requirements.txt
   scripts/depth/.venv/bin/python scripts/depth/export_depth.py
 """
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
-import onnx
 import onnxruntime as ort
 import torch
 import torch.nn.functional as F
-from onnx import TensorProto, numpy_helper
-from onnxruntime.quantization import QuantType, quantize_dynamic
-from onnxruntime.transformers.float16 import convert_float_to_float16
 from PIL import Image
 from transformers import AutoModelForDepthEstimation
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from onnx_fp16 import to_fp16  # noqa: E402
 
 MODEL_ID = "depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf"
 HERE = Path(__file__).parent
@@ -77,32 +76,15 @@ def export_bilinear(model, path):
         F.interpolate = original
 
 
-def to_fp16(src, dst):
-    m = convert_float_to_float16(onnx.load(src), keep_io_types=True, disable_shape_infer=True, op_block_list=["Resize"])
-    # The converter still turns Constant nodes that feed Resize scales into fp16, which is invalid ONNX.
-    producers = {out: node for node in m.graph.node for out in node.output}
-    for node in m.graph.node:
-        if node.op_type != "Resize":
-            continue
-        for name in node.input[1:3]:
-            const = producers.get(name) if name else None
-            if const is not None and const.op_type == "Constant" and const.attribute[0].t.data_type == TensorProto.FLOAT16:
-                t = const.attribute[0].t
-                t.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(t).astype(np.float32), t.name))
-    onnx.save(m, dst)
-
-
 def main():
     BUILD.mkdir(exist_ok=True)
     fp32 = BUILD / "depth-indoor-small.fp32.onnx"
     fp16 = PUBLIC / "depth-indoor-small.fp16.onnx"
-    uint8 = PUBLIC / "depth-indoor-small.uint8.onnx"
 
     model = DepthOnly(AutoModelForDepthEstimation.from_pretrained(MODEL_ID).eval())
     export_bilinear(model, fp32)
     to_fp16(str(fp32), str(fp16))
-    quantize_dynamic(str(fp32), str(uint8), weight_type=QuantType.QUInt8)
-    for p in (fp32, fp16, uint8):
+    for p in (fp32, fp16):
         print(f"{p.name}: {p.stat().st_size / 1e6:.1f} MB")
 
     sample = HERE / "sample.jpg"
@@ -111,7 +93,7 @@ def main():
     x = preprocess(Image.open(sample), 518)
     with torch.no_grad():
         ref = model(torch.from_numpy(x))[0].numpy()
-    for p in (fp16, uint8):
+    for p in (fp16,):
         sess = ort.InferenceSession(str(p), providers=["CPUExecutionProvider"])
         t0 = time.time()
         d = sess.run(None, {"pixel_values": x})[0][0]

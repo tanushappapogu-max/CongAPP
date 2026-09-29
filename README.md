@@ -84,7 +84,7 @@ Scan the Expo QR code with Expo Go on your phone. The app uses the phone camera,
 
 ### Web
 
-The Vercel app works in the browser. It requests camera permission, loads the promptable YOLOE model `/yoloe-11s.onnx` and its prompt pack `/prompts/pack.{json,bin}`, runs inference with ONNX Runtime Web (WebGPU when available, otherwise WASM), draws boxes around detected objects, locks onto the requested target, estimates direction and distance from the camera frame, and triggers phone vibration where supported. A versioned service-worker cache keeps those immutable assets for faster repeat loads after they have downloaded successfully.
+The Vercel app works in the browser. It requests camera permission, loads the promptable YOLOE model (`/yoloe-11s.fp16.onnx` on the GPU) and its prompt pack `/prompts/pack.{json,bin}`, runs inference with ONNX Runtime Web (WebGPU when available, otherwise WASM), draws boxes around detected objects, locks onto the requested target, estimates direction and distance from the camera frame, and triggers phone vibration where supported. A versioned service-worker cache keeps those immutable assets for faster repeat loads after they have downloaded successfully.
 
 The service worker is not an offline guarantee: camera permission, browser APIs, the first model/runtime download, app-shell navigation, and device support can still require network access or fail. iPhone browsers don't expose reliable vibration APIs and websites can't access iPhone LiDAR room meshes directly, so true haptic guidance and LiDAR mapping belong in the native app.
 

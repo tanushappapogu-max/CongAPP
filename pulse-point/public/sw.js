@@ -1,19 +1,19 @@
 // Service worker for Pulse Point.
 // The web detector loads the YOLOE model, its prompt pack, the YOLO11n backup, and the
-// depth models from the public root. Keep this list exact so stale model formats are not mixed into the
+// depth model from the public root. Keep this list exact so stale model formats are not mixed into the
 // runtime cache. The prompt pack must match the model, so bump CACHE_VERSION whenever
 // either is rebuilt. The ONNX Runtime binary is emitted by Vite under a content-hashed
 // /assets/ name, so it is cached by pattern and never goes stale.
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const MODEL_CACHE = `pulse-point-model-${CACHE_VERSION}`;
 const APP_CACHE   = `pulse-point-app-${CACHE_VERSION}`;
 const MODEL_ASSETS = new Set([
+  '/yoloe-11s.fp16.onnx',
   '/yoloe-11s.onnx',
   '/net.onnx',
   '/prompts/pack.json',
   '/prompts/pack.bin',
   '/depth-indoor-small.fp16.onnx',
-  '/depth-indoor-small.uint8.onnx',
 ]);
 const HASHED_RUNTIME = /^\/assets\/ort-wasm-[\w.-]+\.wasm$/;
 

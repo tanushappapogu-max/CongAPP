@@ -12,21 +12,17 @@ const NUM_ANCHORS = 8400;
 const PROMPT_DIM  = 512;
 
 // YOLOE finds anything in the prompt pack; YOLO11n only knows the 80 COCO classes but is about
-// 4× lighter on the CPU. With a GPU we use YOLOE alone. Without one, YOLO11n handles COCO
-// targets and YOLOE loads on demand for everything else. If YOLOE fails to load, YOLO11n is
-// the backup.
+// 4× lighter on the CPU. With a GPU we use YOLOE alone (fp16 weights: half the memory and faster
+// on phone GPUs, scores within 0.003 of fp32). Without one, YOLO11n handles COCO targets and
+// YOLOE loads on demand for everything else. If YOLOE fails to load, YOLO11n is the backup.
 const models = {
-  yoloe: makeSlot('/yoloe-11s.onnx'),
-  yolo: makeSlot('/net.onnx'),
+  yoloe: { url: '/yoloe-11s.onnx', gpuUrl: '/yoloe-11s.fp16.onnx', session: null, sessionPromise: null, backend: null, failed: false, prompted: true },
+  yolo: { url: '/net.onnx', gpuUrl: null, session: null, sessionPromise: null, backend: null, failed: false, prompted: false },
 };
-
-function makeSlot(url) {
-  return { url, bytes: null, bytesPromise: null, session: null, sessionPromise: null, backend: null, failed: false };
-}
 
 let _gpuPromise = null;
 
-function hasWebGPU() {
+export function hasWebGPU() {
   if (!_gpuPromise) {
     _gpuPromise = (async () => {
       try {
@@ -39,57 +35,75 @@ function hasWebGPU() {
   return _gpuPromise;
 }
 
-function fetchBytes(slot) {
-  if (slot.bytes) return Promise.resolve(slot.bytes);
-  if (!slot.bytesPromise) {
-    slot.bytesPromise = fetch(slot.url)
-      .then(r => {
-        if (!r.ok) throw new Error(`Failed to fetch ${slot.url}: ${r.status}`);
-        return r.arrayBuffer();
-      })
-      .then(buf => (slot.bytes = buf))
-      .catch(err => {
-        slot.bytesPromise = null;
-        throw err;
-      });
-  }
-  return slot.bytesPromise;
+// ORT sessions share one runtime and one GPU device; running two at once on a phone GPU just makes
+// both slower and spikes memory, so detection and depth take turns.
+let _queue = Promise.resolve();
+
+export function runExclusive(fn) {
+  const run = _queue.then(fn, fn);
+  _queue = run.catch(() => {});
+  return run;
 }
 
-async function warmup(slot, session) {
-  const feeds = { images: new ort.Tensor('float32', new Float32Array(3 * INPUT_W * INPUT_H), [1, 3, INPUT_H, INPUT_W]) };
-  if (slot === models.yoloe) {
-    feeds.pe = new ort.Tensor('float32', new Float32Array(PROMPT_DIM), [1, 1, PROMPT_DIM]);
+const _bytes = new Map();
+
+function fetchBytes(url) {
+  if (!_bytes.has(url)) {
+    const p = fetch(url)
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch ${url}: ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .catch(err => {
+        _bytes.delete(url);
+        throw err;
+      });
+    _bytes.set(url, p);
   }
-  await session.run(feeds);
+  return _bytes.get(url);
+}
+
+async function create(slot, url, provider) {
+  const session = await ort.InferenceSession.create(await fetchBytes(url), {
+    graphOptimizationLevel: 'all',
+    executionProviders: provider === 'webgpu' ? ['webgpu', 'wasm'] : ['wasm'],
+  });
+  const feeds = { images: new ort.Tensor('float32', new Float32Array(3 * INPUT_W * INPUT_H), [1, 3, INPUT_H, INPUT_W]) };
+  if (slot.prompted) feeds.pe = new ort.Tensor('float32', new Float32Array(PROMPT_DIM), [1, 1, PROMPT_DIM]);
+  // Shader compile failures only surface on the first run, so warm up before trusting the session.
+  try {
+    await runExclusive(() => session.run(feeds));
+  } catch (err) {
+    await session.release().catch(() => {});
+    throw err;
+  }
+  return session;
 }
 
 function openSession(slot, useGpu) {
   if (slot.session) return Promise.resolve(slot.session);
   if (!slot.sessionPromise) {
     slot.sessionPromise = (async () => {
-      const bytes = await fetchBytes(slot);
-      const options = { graphOptimizationLevel: 'all' };
-      let session = null;
-      if (useGpu) {
+      const attempts = [];
+      if (useGpu && slot.gpuUrl) attempts.push([slot.gpuUrl, 'webgpu']);
+      if (useGpu) attempts.push([slot.url, 'webgpu']);
+      attempts.push([slot.url, 'wasm']);
+      let lastErr = null;
+      for (const [url, provider] of attempts) {
         try {
-          session = await ort.InferenceSession.create(bytes, { ...options, executionProviders: ['webgpu', 'wasm'] });
-          await warmup(slot, session);
-          slot.backend = 'webgpu';
+          slot.session = await create(slot, url, provider);
+          slot.backend = provider;
+          break;
         } catch (err) {
-          console.warn(`WebGPU unavailable for ${slot.url}, using WASM`, err);
-          session = null;
+          console.warn(`Could not load ${url} on ${provider}`, err);
+          lastErr = err;
         }
       }
-      if (!session) {
-        session = await ort.InferenceSession.create(bytes, { ...options, executionProviders: ['wasm'] });
-        await warmup(slot, session);
-        slot.backend = 'wasm';
-      }
-      slot.session = session;
-      slot.bytes = null; // ORT has its own copy now; don't hold tens of MB twice
-      slot.bytesPromise = null;
-      return session;
+      // ORT keeps its own copy of the weights; don't hold tens of MB twice.
+      _bytes.delete(slot.url);
+      if (slot.gpuUrl) _bytes.delete(slot.gpuUrl);
+      if (!slot.session) throw lastErr;
+      return slot.session;
     })().catch(err => {
       slot.sessionPromise = null;
       slot.failed = true;
@@ -102,7 +116,7 @@ function openSession(slot, useGpu) {
 /** Start downloading whichever detector this device will use first. */
 export async function preloadModel() {
   const gpu = await hasWebGPU();
-  return fetchBytes(gpu ? models.yoloe : models.yolo);
+  return fetchBytes(gpu ? models.yoloe.gpuUrl : models.yolo.url);
 }
 
 export function isModelReady() {
@@ -137,7 +151,7 @@ function chooseDetector(prompts) {
   if (yoloe.session) return 'yoloe';
   if (!yoloe.failed) {
     // CPU device asking for something outside COCO: fetch YOLOE in the background. Until it's
-    // ready the app's server and cloud fallbacks keep searching.
+    // ready the server fallback (if configured) keeps searching.
     openSession(yoloe, false).catch(err => console.warn('YOLOE failed to load', err));
   } else if (!yolo.session && !yolo.failed) {
     openSession(yolo, false).catch(err => console.warn('YOLO11n failed to load', err));
@@ -208,12 +222,12 @@ export async function runInference(video, prompts) {
 
   let raw, numClasses, labelFor;
   if (detector === 'yoloe') {
-    const out = await models.yoloe.session.run({ images, pe: promptTensor(prompts) });
+    const out = await runExclusive(() => models.yoloe.session.run({ images, pe: promptTensor(prompts) }));
     raw = out[Object.keys(out)[0]].data;
     numClasses = prompts.names.length;
     labelFor = cls => prompts.names[cls];
   } else {
-    const out = await models.yolo.session.run({ images });
+    const out = await runExclusive(() => models.yolo.session.run({ images }));
     raw = out[Object.keys(out)[0]].data;
     numClasses = COCO_LABELS.length;
     labelFor = cls => (COCO_LABELS[cls] === prompts.cocoLabel ? prompts.names[0] : COCO_LABELS[cls]);
