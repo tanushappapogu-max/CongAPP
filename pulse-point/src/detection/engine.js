@@ -161,8 +161,8 @@ function chooseDetector(prompts) {
   if (prompts.cocoLabel && yolo.session) return 'yolo';
   if (yoloe.session) return 'yoloe';
   if (!yoloe.failed) {
-    // CPU device asking for something outside COCO: fetch YOLOE in the background. Until it's
-    // ready the app's server and cloud fallbacks keep searching.
+    // CPU device asking for something outside COCO: fetch YOLOE in the background. Local
+    // inference returns no boxes until it is ready; the optional server probe is managed by App.
     openSession(yoloe, false).catch(err => console.warn('YOLOE failed to load', err));
   } else if (!yolo.session && !yolo.failed) {
     openSession(yolo, false).catch(err => console.warn('YOLO11n failed to load', err));

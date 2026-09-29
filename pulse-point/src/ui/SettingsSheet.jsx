@@ -147,8 +147,9 @@ export default function SettingsSheet({
 
         <footer className="settings-footer">
           <p className="settings-help">
-            Pulse Point runs a CNN on-device to detect and locate objects in real time.
-            Audio and vibration guide you toward them.
+            Detection runs on this device by default. If the optional server is configured and
+            reachable, camera frames and your target may also be sent there while scanning. Audio
+            and vibration provide prototype direction and proximity cues.
           </p>
         </footer>
       </div>

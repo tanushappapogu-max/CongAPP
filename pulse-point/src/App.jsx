@@ -345,8 +345,9 @@ export default function App() {
 
     if (signal.aborted) return null;
 
-    // ── Heavy path: PulsePointNet server every HEAVY_COOLDOWN_MS ──
-    // Runs async and non-blocking; result stored in aiBoxRef for next frame.
+    // ── Optional server probe every HEAVY_COOLDOWN_MS ──
+    // Runs whenever configured/healthy, even after local matches; the merge below only uses it
+    // when local matching has no result. The camera frame and target are uploaded by server.js.
     const ranHeavy = now - lastHeavyRunRef.current >= HEAVY_COOLDOWN_MS;
     if (ranHeavy && tgt && !aiInFlightRef.current && isServerAvailable()) {
       lastHeavyRunRef.current = now;

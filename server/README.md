@@ -1,50 +1,41 @@
-# Pulse Point Python service
+# Pulse Point Python Service
 
-This service contains two separate capabilities: an experimental Pulse Point
-vision endpoint and the unrelated tea-text classifier endpoints. The tea
-endpoints remain available for existing callers; their presence does not make
-the vision detector production-ready.
+This folder contains an optional experimental vision API and unrelated legacy tea-text classification endpoints. The vision service is not validated for assistive use, navigation, obstacle avoidance, or safety-critical decisions.
 
-## Experimental vision contract
+## Vision API
 
-`POST /detect` is the legacy mobile-compatible route. `POST /v1/detect` is the
-versioned alias and uses the same handler and response shape.
+POST /detect and POST /v1/detect are aliases with the same handler. Requests use multipart/form-data:
 
-The request is `multipart/form-data` with:
+- image: JPEG, PNG, or WebP; 10 MiB default upload limit, configurable up to a hard cap of 20 MiB.
+- target: optional printable text, maximum 64 characters.
 
-- `image`: JPEG, PNG, or WebP, up to 10 MiB by default (the configuration is
-  hard-capped at 20 MiB).
-- `target`: optional printable text, limited to 64 characters.
+The handler validates the target, content type, encoded and decoded image, image dimensions, upload size, CORS origin, and per-IP request rate before inference. GET /health reports service/detector metadata and model availability; GET /objects lists the indoor-object ontology.
 
-Malformed images, MIME mismatches, oversized uploads, and invalid targets are
-rejected before inference. The endpoint has a small in-memory per-IP rate
-limit suitable for a prototype deployment.
+### Model path and limitations
 
-The vision model is not a trained or evaluated bounding-box detector. It maps
-ImageNet classification probabilities onto a small indoor-object ontology and
-uses approximate Grad-CAM as a localization overlay. Its confidence is raw
-and uncalibrated; the default candidate threshold is 0.50 and can be raised
-with `PULSEPOINT_RAW_CONFIDENCE_THRESHOLD`. Every response includes metadata
-with `status: experimental`, `confidenceCalibration: uncalibrated`,
-`validationStatus: unvalidated`,
-`localizationMethod: approximate/Grad-CAM`, `assistiveReady: false`, and
-`proof: false`. These fields are contractual safety signals: this path must
-not be presented as validated assistive sensing.
+When a target is supplied, the service tries LocateAnything-3B first. If that model is unavailable, errors, or returns no parsed box, the handler falls back to the older indoor-object classifier. That fallback maps ImageNet classification probabilities to a small indoor-object ontology and uses approximate Grad-CAM for localization. It is not trained or evaluated as a bounding-box detector.
 
-`GET /health` reports the detector version, status, localization method,
-readiness/proof flags, and the supported object ontology. `GET /objects`
-returns the ontology labels only.
+The LocateAnything adapter currently returns a fixed confidence score of 0.90; this is not a calibrated probability. The fallback classifier's raw ImageNet probability is also uncalibrated. Both paths are experimental and unvalidated. Responses force assistiveReady, assistiveReadyProof, and proof to false.
+
+The shared response metadata currently retains the legacy localizationMethod value approximate/Grad-CAM, including on a LocateAnything result. That field does not precisely describe the primary model's box-generation path. Do not present any response field as evidence of model validation or assistive readiness.
+
+## Web Client Data Flow
+
+The web detector is local by default when VITE_SERVER_URL is unset. If the variable is set and the service health check succeeds, the web app sends a JPEG camera frame and target text approximately every 2.5 seconds while scanning. This remote request currently runs even when local detection has a match. The local match is preferred; the returned remote box is selected only when local matching has no result. Therefore the remote result is a fallback, but the remote request is not gated on local failure.
+
+Anyone configuring this endpoint should understand that camera imagery and target text leave the device during scanning, including while the local detector is succeeding. VITE_SERVER_URL is a public client-side build setting, not a place for secrets.
 
 ## Configuration
 
-- `PULSEPOINT_CORS_ORIGINS`: comma-separated explicit `http://` or `https://`
-  origins. Wildcards are ignored; an invalid configured value fails closed.
-- `PULSEPOINT_MAX_IMAGE_BYTES`: upload limit, bounded to 20 MiB.
-- `PULSEPOINT_DETECT_RATE_LIMIT`: detector requests per IP per minute,
-  bounded to 1–120 and defaulting to 30.
-- `PULSEPOINT_RAW_CONFIDENCE_THRESHOLD`: raw ImageNet probability gate,
-  defaulting to 0.50 and never accepted below 0.50.
+- PULSEPOINT_CORS_ORIGINS: comma-separated explicit HTTP/HTTPS origins. Wildcards are ignored; invalid configured values fail closed.
+- PULSEPOINT_MAX_IMAGE_BYTES: upload limit, bounded to 20 MiB; default 10 MiB.
+- PULSEPOINT_DETECT_RATE_LIMIT: detector requests per IP per minute, bounded from 1 to 120; default 30.
+- PULSEPOINT_RAW_CONFIDENCE_THRESHOLD: raw ImageNet probability gate for the fallback classifier, default 0.50 and never accepted below 0.50. It does not calibrate the LocateAnything fixed score.
 
-The default CORS list includes the deployed web origin and the two local Vite
-ports. Native mobile requests without an `Origin` header are unaffected by
-CORS, but still receive the same request validation and detector metadata.
+## Deployment
+
+The repository includes a Modal deployment definition in modal_app.py that packages the API with an A10G GPU and a persistent Hugging Face cache. Deployment needs the Modal CLI/account and may incur GPU/storage charges according to the hosting account's current terms. Review those costs before deploying. The resulting service URL can be supplied as VITE_SERVER_URL to the web build, which enables the camera-frame upload flow described above.
+
+For local development, install requirements.txt and run the FastAPI app with Uvicorn. The service may attempt to download large model weights on first use; do not assume first-start latency or CPU inference is suitable for live scanning.
+
+The tea-text classifier routes are legacy capabilities unrelated to object detection.
