@@ -13,7 +13,7 @@ import { computeGuidance } from './guidance/compute.js';
 import { Haptics } from './guidance/haptics.js';
 import { Speaker } from './guidance/speech.js';
 
-import { getWideCameraStream, setWidestZoom, stopStream } from './lib/camera.js';
+import { getMainCameraStream, setNormalZoom, stopStream } from './lib/camera.js';
 import { startListening, isVoiceSupported, extractTarget } from './lib/voice.js';
 import { loadSettings, saveSettings } from './lib/settings.js';
 
@@ -423,7 +423,7 @@ export default function App() {
   async function initializeCamera({ target: requestedTarget, signal }) {
     let stream = null;
     try {
-      stream = await getWideCameraStream();
+      stream = await getMainCameraStream();
       if (signal.aborted) return stream;
 
       const video = videoRef.current;
@@ -432,7 +432,7 @@ export default function App() {
       video.srcObject = stream;
       await video.play();
       if (signal.aborted) return stream;
-      await setWidestZoom(stream);
+      await setNormalZoom(stream);
       if (signal.aborted) return stream;
 
       if (mountedRef.current) {

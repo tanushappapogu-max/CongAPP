@@ -44,7 +44,10 @@ export function computeGuidance(match, frame, prevArea) {
   const area = (w * h) / (frame.width * frame.height);
 
   const labelForDistance = (match.class || match.label || '').toLowerCase();
-  const meters = match.depthMeters ?? estimateDistanceMeters(labelForDistance, w, frame.width, match.refWidthCm);
+  // Focal length comes from the frame's long side so held-upright (portrait) phones get the same
+  // math as landscape; the short side made distances ~1.8× too short.
+  const meters = match.depthMeters
+    ?? estimateDistanceMeters(labelForDistance, w, Math.max(frame.width, frame.height), match.refWidthCm);
   const distanceText = meters != null
     ? describeDistanceMeters(meters)
     : describeDistanceArea(match.bbox, frame);

@@ -112,3 +112,11 @@ describe('computeGuidance — depth readings', () => {
     expect(result.signal).not.toBe('reach');
   });
 });
+
+describe('computeGuidance — frame orientation', () => {
+  test('portrait and landscape give the same distance for the same object size', () => {
+    const landscape = computeGuidance({ bbox: [900, 500, 120, 80], class: 'laptop' }, { width: 1920, height: 1080 }, 0);
+    const portrait = computeGuidance({ bbox: [480, 900, 120, 80], class: 'laptop' }, { width: 1080, height: 1920 }, 0);
+    expect(portrait.distanceMeters).toBeCloseTo(landscape.distanceMeters, 5);
+  });
+});

@@ -4,15 +4,17 @@
 //   distance = (real_object_width * focal_length_px) / observed_bbox_width_px
 //
 // We don't know exact focal length per device, so we estimate it from a typical
-// phone main rear camera horizontal FOV (~64°). For a 1920px frame:
+// phone main (1×) rear camera's field of view across the frame's long side (~64°),
+// which holds in portrait and landscape. For a 1920px long side:
 //   focal_px = (1920 / 2) / tan(32°) ≈ 1536px
+// This assumes the main camera; the 0.5× ultra-wide would need a much wider FOV.
 //
 // Accuracy is roughly ±25–35% — much better than raw bbox-area buckets, and the
 // answer is in METERS instead of "close / very close." That number drives the
 // haptic + spoken guidance for blind users, where "1.2 m, 30 degrees right" beats
 // "close · right" every time.
 
-const ASSUMED_HFOV_DEG = 64;
+const ASSUMED_LONG_SIDE_FOV_DEG = 64;
 
 // Typical real-world widths in cm. These are deliberately rough — real objects
 // vary, but we just need order-of-magnitude correctness for guidance.
@@ -39,14 +41,14 @@ export const REFERENCE_WIDTHS_CM = {
   'teddy bear': 30, 'hair drier': 25, toothbrush: 2,
 };
 
-export function focalLengthPx(frameWidthPx, hFovDeg = ASSUMED_HFOV_DEG) {
-  return (frameWidthPx / 2) / Math.tan((hFovDeg / 2) * Math.PI / 180);
+export function focalLengthPx(frameLongSidePx, fovDeg = ASSUMED_LONG_SIDE_FOV_DEG) {
+  return (frameLongSidePx / 2) / Math.tan((fovDeg / 2) * Math.PI / 180);
 }
 
-export function estimateDistanceMeters(label, bboxWidthPx, frameWidthPx, refWidthCm = null) {
+export function estimateDistanceMeters(label, bboxWidthPx, frameLongSidePx, refWidthCm = null) {
   const ref = refWidthCm ?? REFERENCE_WIDTHS_CM[(label || '').toLowerCase()];
-  if (!ref || !bboxWidthPx || !frameWidthPx) return null;
-  const focal = focalLengthPx(frameWidthPx);
+  if (!ref || !bboxWidthPx || !frameLongSidePx) return null;
+  const focal = focalLengthPx(frameLongSidePx);
   const distanceCm = (ref * focal) / bboxWidthPx;
   if (!isFinite(distanceCm) || distanceCm <= 0) return null;
   return distanceCm / 100;
