@@ -10,13 +10,7 @@
   },
   "headers": [
     {
-      "source": "/net.onnx",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/ort-wasm-simd.wasm",
+      "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
-import { preloadDepth, measureDepth, isDepthBusy } from './detection/depth.js';
+import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
 import { currentDepthMeters } from './detection/depthSample.js';
 import { loadModel, runInference, preloadModel, isModelReady } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
@@ -29,7 +29,8 @@ const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
 const CLOUD_AI_COOLDOWN_MS = 5000;
-const DEPTH_INTERVAL_MS = 1500;
+// GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
+const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 1500 };
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -436,7 +437,8 @@ export default function App() {
       fromServer: true,
     } : null);
 
-    if (freshMatch && ranLight && now - lastDepthRunRef.current >= DEPTH_INTERVAL_MS && !isDepthBusy()) {
+    const depthInterval = DEPTH_INTERVAL_MS[getDepthBackend()] ?? DEPTH_INTERVAL_MS.wasm;
+    if (freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()) {
       lastDepthRunRef.current = now;
       const depthBox = freshMatch.bbox;
       measureDepth(video, depthBox).then(meters => {

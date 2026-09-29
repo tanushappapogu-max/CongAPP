@@ -3,3 +3,5 @@ transformers>=4.45
 onnx>=1.22
 onnxruntime>=1.30
 Pillow
+onnxconverter-common
+onnx_ir

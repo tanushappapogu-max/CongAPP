@@ -1,12 +1,12 @@
 // Main-thread client for the metric depth worker. One measurement at a time; callers skip
 // frames while it's busy and fall back to width-based distance when depth is unavailable.
 
-const DEPTH_MODEL_URL = '/depth-indoor-small.onnx';
 const SHORT_SIDE = 518; // the model's training size; smaller inputs drift 10–25% in meters
 const PATCH = 14;
 
 let worker = null;
 let failed = false;
+let backend = null;
 let busy = false;
 let nextId = 1;
 const pending = new Map();
@@ -24,6 +24,7 @@ function getWorker() {
       const entry = pending.get(data.id);
       if (!entry) return;
       pending.delete(data.id);
+      if (data.backend) backend = data.backend;
       if (data.ok) entry.resolve(data);
       else entry.reject(new Error(data.error));
     };
@@ -39,7 +40,7 @@ function call(message, transfer = []) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
     pending.set(id, { resolve, reject });
-    getWorker().postMessage({ ...message, id, url: DEPTH_MODEL_URL }, transfer);
+    getWorker().postMessage({ ...message, id }, transfer);
   });
 }
 
@@ -49,6 +50,11 @@ export function isDepthAvailable() {
 
 export function isDepthBusy() {
   return busy;
+}
+
+/** 'webgpu' or 'wasm' once the worker has loaded a model, else null. */
+export function getDepthBackend() {
+  return backend;
 }
 
 /** Start downloading and compiling the depth model in the background. Never throws. */

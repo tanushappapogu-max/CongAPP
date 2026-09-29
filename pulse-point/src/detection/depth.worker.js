@@ -1,22 +1,54 @@
 // Runs the metric depth model off the main thread so detection, haptics and speech never stall.
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/webgpu';
 import { sampleBoxDepth } from './depthSample.js';
 
-ort.env.wasm.wasmPaths = '/';
 ort.env.wasm.numThreads = 1;
-ort.env.wasm.simd = true;
+ort.env.logLevel = 'error';
 
+// Same graph, two encodings: fp16 for the GPU, uint8 for the CPU (uint8 ops don't run on WebGPU).
+const MODELS = {
+  webgpu: '/depth-indoor-small.fp16.onnx',
+  wasm: '/depth-indoor-small.uint8.onnx',
+};
+const OPTIONS = { graphOptimizationLevel: 'all' };
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 
 let sessionPromise = null;
+let backend = null;
 
-function getSession(url) {
+async function fetchModel(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch depth model: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function createSession() {
+  if (self.navigator?.gpu) {
+    try {
+      const session = await ort.InferenceSession.create(await fetchModel(MODELS.webgpu), {
+        ...OPTIONS,
+        executionProviders: ['webgpu', 'wasm'],
+      });
+      // Shader compile failures only show up on the first run, so find out now rather than mid-scan.
+      await session.run({ pixel_values: new ort.Tensor('float32', new Float32Array(3 * 518 * 518), [1, 3, 518, 518]) });
+      backend = 'webgpu';
+      return session;
+    } catch (err) {
+      console.warn('Depth: WebGPU unavailable, using WASM', err);
+    }
+  }
+  const session = await ort.InferenceSession.create(await fetchModel(MODELS.wasm), {
+    ...OPTIONS,
+    executionProviders: ['wasm'],
+  });
+  backend = 'wasm';
+  return session;
+}
+
+function getSession() {
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(url, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    }).catch(err => {
+    sessionPromise = createSession().catch(err => {
       sessionPromise = null;
       throw err;
     });
@@ -37,11 +69,11 @@ function toTensor(pixels, width, height) {
 }
 
 self.onmessage = async ({ data }) => {
-  const { id, type, url } = data;
+  const { id, type } = data;
   try {
-    const session = await getSession(url);
+    const session = await getSession();
     if (type === 'load') {
-      self.postMessage({ id, ok: true });
+      self.postMessage({ id, ok: true, backend });
       return;
     }
     const t0 = performance.now();
@@ -49,7 +81,7 @@ self.onmessage = async ({ data }) => {
     const depth = out.predicted_depth;
     const [, dh, dw] = depth.dims;
     const meters = sampleBoxDepth(depth.data, dw, dh, data.boxRel);
-    self.postMessage({ id, ok: true, meters, ms: Math.round(performance.now() - t0) });
+    self.postMessage({ id, ok: true, meters, backend, ms: Math.round(performance.now() - t0) });
   } catch (err) {
     self.postMessage({ id, ok: false, error: String(err?.message || err) });
   }

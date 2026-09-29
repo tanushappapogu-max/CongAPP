@@ -1,8 +1,7 @@
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/webgpu';
 
-ort.env.wasm.wasmPaths = '/';
 ort.env.wasm.numThreads = 1;
-ort.env.wasm.simd = true;
+ort.env.logLevel = 'error';
 
 const INPUT_W = 640;
 const INPUT_H = 640;
@@ -119,6 +118,32 @@ export function preloadModel(opts = {}) {
   return _preloadPromise;
 }
 
+let _backend = null;
+
+/** 'webgpu' or 'wasm' once the session exists, else null. */
+export function getBackend() {
+  return _backend;
+}
+
+// Prefer the GPU; ORT runs any op WebGPU lacks on the CPU. Browsers without a usable
+// adapter (or a GPU session that fails to build) get the plain WASM backend.
+async function _createSession(buffer) {
+  const options = { graphOptimizationLevel: 'all' };
+  if (typeof navigator !== 'undefined' && navigator.gpu) {
+    try {
+      const session = await ort.InferenceSession.create(buffer, { ...options, executionProviders: ['webgpu', 'wasm'] });
+      _backend = 'webgpu';
+      return session;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('WebGPU unavailable, using WASM', err);
+    }
+  }
+  const session = await ort.InferenceSession.create(buffer, { ...options, executionProviders: ['wasm'] });
+  _backend = 'wasm';
+  return session;
+}
+
 /** Returns true if the model session is already loaded and warmed up. */
 export function isModelReady() {
   return _session !== null && _warmedUp;
@@ -178,12 +203,9 @@ async function _doLoad({ onProgress, signal, skipWarmup }) {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   // ── Step 2: Compile ONNX graph ────────────────────────────────────────────
-  report(onProgress, { step: 'compile', percent: 0, message: 'Compiling WASM SIMD graph…' });
+  report(onProgress, { step: 'compile', percent: 0, message: 'Compiling model graph…' });
   if (!_session) {
-    _session = await ort.InferenceSession.create(buffer, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    });
+    _session = await _createSession(buffer);
   }
   report(onProgress, { step: 'compile', percent: 100, message: 'Graph compiled.' });
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
