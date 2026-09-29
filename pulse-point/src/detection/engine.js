@@ -7,6 +7,7 @@ let ort = null;
 let _ortPromise = null;
 
 function wasmThreads() {
+  if (FLAGS.threads) return FLAGS.threads;
   // Threads need a cross-origin-isolated page (COOP/COEP headers in vercel.json).
   if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1;
   const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
