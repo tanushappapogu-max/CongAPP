@@ -6,7 +6,7 @@ export default defineConfig({
   base: '/',
   optimizeDeps: {
     // Pre-bundling rewrites import.meta.url, which ONNX Runtime uses to locate its .wasm file.
-    exclude: ['@huggingface/transformers', 'onnxruntime-web'],
+    exclude: ['onnxruntime-web'],
   },
   worker: {
     format: 'es',

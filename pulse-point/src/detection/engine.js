@@ -1,4 +1,5 @@
 import * as ort from 'onnxruntime-web/webgpu';
+import { COCO_LABELS } from './coco.js';
 
 ort.env.wasm.numThreads = 1;
 ort.env.logLevel = 'error';
@@ -8,221 +9,143 @@ const INPUT_H = 640;
 const CONF_THRESH = 0.25;
 const IOU_THRESH  = 0.45;
 const NUM_ANCHORS = 8400;
-const MODEL_URL   = '/yoloe-11s.onnx';
 const PROMPT_DIM  = 512;
-export const MODEL_CACHE_NAME = 'pulse-point-model-v3';
 
-// ── Singleton session & preload state ────────────────────────────────────────
-let _session = null;
-let _preloadPromise = null;  // shared in-flight Promise<ArrayBuffer>
-let _modelBuffer = null;     // resolved ArrayBuffer once downloaded
-let _loadPromise = null;     // shared in-flight Promise<session>
-let _warmedUp = false;
+// YOLOE finds anything in the prompt pack; YOLO11n only knows the 80 COCO classes but is about
+// 4× lighter on the CPU. With a GPU we use YOLOE alone. Without one, YOLO11n handles COCO
+// targets and YOLOE loads on demand for everything else. If YOLOE fails to load, YOLO11n is
+// the backup.
+const models = {
+  yoloe: makeSlot('/yoloe-11s.onnx'),
+  yolo: makeSlot('/net.onnx'),
+};
 
-// ── Progress helpers ──────────────────────────────────────────────────────────
-/**
- * Report a progress event. Shape:
- *   { step, loaded?, total?, percent?, fromCache?, message? }
- * @param {Function|null} onProgress
- * @param {object} data
- */
-function report(onProgress, data) {
-  if (typeof onProgress === 'function') {
-    try { onProgress(data); } catch { /* never block boot on listener errors */ }
-  }
+function makeSlot(url) {
+  return { url, bytes: null, bytesPromise: null, session: null, sessionPromise: null, backend: null, failed: false };
 }
 
-// ── Model byte fetch with streaming progress ──────────────────────────────────
-/**
- * Download the ONNX model with streaming progress. Returns an ArrayBuffer.
- * Detects whether the response came from the service-worker cache via
- * the response timestamp header that the SW adds, or by checking Cache API.
- *
- * @param {{ onProgress?: Function, signal?: AbortSignal }} opts
- * @returns {Promise<ArrayBuffer>}
- */
-async function _fetchModelBuffer({ onProgress, signal } = {}) {
-  // Detect cache hit by peeking into Cache Storage first (best-effort).
-  let fromCache = false;
-  try {
-    const caches_ = typeof caches !== 'undefined' ? caches : null;
-    if (caches_) {
-      const cache = await caches_.open(MODEL_CACHE_NAME);
-      const cached = await cache.match(MODEL_URL);
-      if (cached) fromCache = true;
-    }
-  } catch { /* ignore — browsers without cache API still work */ }
+let _gpuPromise = null;
 
-  report(onProgress, { step: 'download', loaded: 0, total: 0, percent: 0, fromCache, message: fromCache ? 'Loading from offline cache…' : 'Downloading neural weights…' });
-
-  const response = await fetch(MODEL_URL, { signal });
-  if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-
-  const contentLength = Number(response.headers.get('content-length')) || 0;
-  const reader = response.body?.getReader();
-
-  // Fallback: no streaming reader → download whole blob at once
-  if (!reader) {
-    report(onProgress, { step: 'download', loaded: 0, total: contentLength, percent: 50, fromCache, message: fromCache ? 'Loading from cache…' : 'Downloading (streaming unavailable)…' });
-    const buffer = await response.arrayBuffer();
-    report(onProgress, { step: 'download', loaded: buffer.byteLength, total: buffer.byteLength, percent: 100, fromCache, message: 'Weights loaded.' });
-    return buffer;
+function hasWebGPU() {
+  if (!_gpuPromise) {
+    _gpuPromise = (async () => {
+      try {
+        return typeof navigator !== 'undefined' && !!navigator.gpu && !!(await navigator.gpu.requestAdapter());
+      } catch {
+        return false;
+      }
+    })();
   }
-
-  const chunks = [];
-  let loaded = 0;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.byteLength;
-    const percent = contentLength > 0 ? Math.min(99, Math.round((loaded / contentLength) * 100)) : 0;
-    report(onProgress, { step: 'download', loaded, total: contentLength, percent, fromCache, message: fromCache ? 'Loading from cache…' : `Downloading neural weights… ${percent}%` });
-  }
-
-  // Concat all chunks into a single ArrayBuffer
-  const totalBytes = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-  const result = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  report(onProgress, { step: 'download', loaded: totalBytes, total: totalBytes, percent: 100, fromCache, message: 'Weights ready.' });
-  return result.buffer;
+  return _gpuPromise;
 }
 
-// ── Preload — call early (e.g. on mount) to warm the cache in the background ──
-/**
- * Kick off a background download of the model bytes. Safe to call multiple times.
- * Returns a Promise that resolves when the buffer is ready.
- * @param {{ onProgress?: Function, signal?: AbortSignal }} opts
- */
-export function preloadModel(opts = {}) {
-  if (_modelBuffer) {
-    report(opts.onProgress, { step: 'download', loaded: 1, total: 1, percent: 100, fromCache: true, message: 'Loaded from offline cache.' });
-    return Promise.resolve(_modelBuffer);
+function fetchBytes(slot) {
+  if (slot.bytes) return Promise.resolve(slot.bytes);
+  if (!slot.bytesPromise) {
+    slot.bytesPromise = fetch(slot.url)
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch ${slot.url}: ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then(buf => (slot.bytes = buf))
+      .catch(err => {
+        slot.bytesPromise = null;
+        throw err;
+      });
   }
-  if (!_preloadPromise) {
-    _preloadPromise = _fetchModelBuffer(opts).then(buf => {
-      _modelBuffer = buf;
-      return buf;
-    }).catch(err => {
-      _preloadPromise = null; // allow retry on next call
+  return slot.bytesPromise;
+}
+
+async function warmup(slot, session) {
+  const feeds = { images: new ort.Tensor('float32', new Float32Array(3 * INPUT_W * INPUT_H), [1, 3, INPUT_H, INPUT_W]) };
+  if (slot === models.yoloe) {
+    feeds.pe = new ort.Tensor('float32', new Float32Array(PROMPT_DIM), [1, 1, PROMPT_DIM]);
+  }
+  await session.run(feeds);
+}
+
+function openSession(slot, useGpu) {
+  if (slot.session) return Promise.resolve(slot.session);
+  if (!slot.sessionPromise) {
+    slot.sessionPromise = (async () => {
+      const bytes = await fetchBytes(slot);
+      const options = { graphOptimizationLevel: 'all' };
+      let session = null;
+      if (useGpu) {
+        try {
+          session = await ort.InferenceSession.create(bytes, { ...options, executionProviders: ['webgpu', 'wasm'] });
+          await warmup(slot, session);
+          slot.backend = 'webgpu';
+        } catch (err) {
+          console.warn(`WebGPU unavailable for ${slot.url}, using WASM`, err);
+          session = null;
+        }
+      }
+      if (!session) {
+        session = await ort.InferenceSession.create(bytes, { ...options, executionProviders: ['wasm'] });
+        await warmup(slot, session);
+        slot.backend = 'wasm';
+      }
+      slot.session = session;
+      return session;
+    })().catch(err => {
+      slot.sessionPromise = null;
+      slot.failed = true;
       throw err;
     });
   }
-  // If a preload is already in flight, we can't attach new progress listeners
-  // to the same stream. Just return the shared promise (caller will get the buffer).
-  return _preloadPromise;
+  return slot.sessionPromise;
 }
 
-let _backend = null;
-
-/** 'webgpu' or 'wasm' once the session exists, else null. */
-export function getBackend() {
-  return _backend;
+/** Start downloading whichever detector this device will use first. */
+export async function preloadModel() {
+  const gpu = await hasWebGPU();
+  return fetchBytes(gpu ? models.yoloe : models.yolo);
 }
 
-// Prefer the GPU; ORT runs any op WebGPU lacks on the CPU. Browsers without a usable
-// adapter (or a GPU session that fails to build) get the plain WASM backend.
-async function _createSession(buffer) {
-  const options = { graphOptimizationLevel: 'all' };
-  if (typeof navigator !== 'undefined' && navigator.gpu) {
-    try {
-      const session = await ort.InferenceSession.create(buffer, { ...options, executionProviders: ['webgpu', 'wasm'] });
-      _backend = 'webgpu';
-      return session;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('WebGPU unavailable, using WASM', err);
-    }
-  }
-  const session = await ort.InferenceSession.create(buffer, { ...options, executionProviders: ['wasm'] });
-  _backend = 'wasm';
-  return session;
-}
-
-/** Returns true if the model session is already loaded and warmed up. */
 export function isModelReady() {
-  return _session !== null && _warmedUp;
+  return !!(models.yoloe.session || models.yolo.session);
 }
 
-// ── Warm-up: run one dummy inference to pre-compile JIT kernels ────────────────
-async function _warmupSession(session, onProgress) {
-  report(onProgress, { step: 'warmup', percent: 0, message: 'Warming up inference engine…' });
-  const dummyBuf = new Float32Array(3 * INPUT_W * INPUT_H); // all zeros
-  const dummyInput = new ort.Tensor('float32', dummyBuf, [1, 3, INPUT_H, INPUT_W]);
-  const dummyPe = new ort.Tensor('float32', new Float32Array(PROMPT_DIM), [1, 1, PROMPT_DIM]);
-  try {
-    await session.run({ images: dummyInput, pe: dummyPe });
-  } catch {
-    // Warm-up failure is non-fatal; the real first inference may be slower but will work.
-  }
-  _warmedUp = true;
-  report(onProgress, { step: 'warmup', percent: 100, message: 'Engine ready.' });
+/** Which detectors are loaded and on what backend, for debugging. */
+export function getDetectorInfo() {
+  return { yoloe: models.yoloe.backend, yolo: models.yolo.backend };
 }
 
-// ── Primary loadModel with per-step progress callbacks ────────────────────────
-/**
- * Load (or return the cached) ONNX inference session.
- *
- * Progress callbacks receive objects with:
- *   { step: 'download'|'compile'|'warmup', percent, loaded?, total?, fromCache?, message }
- *
- * @param {{ onProgress?: Function, signal?: AbortSignal, skipWarmup?: boolean }} opts
- * @returns {Promise<InferenceSession>}
- */
-export async function loadModel({ onProgress, signal, skipWarmup = false } = {}) {
-  if (_session && _warmedUp) return _session;
-  if (_session && skipWarmup) return _session;
-
-  // Serialize concurrent load calls
-  if (_loadPromise) return _loadPromise;
-
-  _loadPromise = _doLoad({ onProgress, signal, skipWarmup }).finally(() => {
-    _loadPromise = null;
-  });
-  return _loadPromise;
-}
-
-async function _doLoad({ onProgress, signal, skipWarmup }) {
-  if (_session && (_warmedUp || skipWarmup)) return _session;
-
-  // ── Step 1: Download/fetch model bytes ────────────────────────────────────
-  let buffer;
-  if (_modelBuffer) {
-    // Already preloaded
-    report(onProgress, { step: 'download', loaded: _modelBuffer.byteLength, total: _modelBuffer.byteLength, percent: 100, fromCache: true, message: 'Loaded from offline cache.' });
-    buffer = _modelBuffer;
+export async function loadModel({ signal } = {}) {
+  const gpu = await hasWebGPU();
+  if (gpu) {
+    try {
+      await openSession(models.yoloe, true);
+    } catch (err) {
+      console.warn('YOLOE failed to load; using the YOLO11n backup', err);
+      await openSession(models.yolo, true);
+    }
   } else {
-    buffer = await _fetchModelBuffer({ onProgress, signal });
-    _modelBuffer = buffer;
+    await openSession(models.yolo, false);
   }
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-  // ── Step 2: Compile ONNX graph ────────────────────────────────────────────
-  report(onProgress, { step: 'compile', percent: 0, message: 'Compiling model graph…' });
-  if (!_session) {
-    _session = await _createSession(buffer);
-  }
-  report(onProgress, { step: 'compile', percent: 100, message: 'Graph compiled.' });
-  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-  // ── Step 3: Warmup ────────────────────────────────────────────────────────
-  if (!skipWarmup && !_warmedUp) {
-    await _warmupSession(_session, onProgress);
-  }
-  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-  return _session;
+  return true;
 }
 
-// ── Inference ─────────────────────────────────────────────────────────────────
+function chooseDetector(prompts) {
+  const { yoloe, yolo } = models;
+  if (yoloe.session && yoloe.backend === 'webgpu') return 'yoloe';
+  if (prompts.cocoLabel && yolo.session) return 'yolo';
+  if (yoloe.session) return 'yoloe';
+  if (!yoloe.failed) {
+    // CPU device asking for something outside COCO: fetch YOLOE in the background. Until it's
+    // ready the app's server and cloud fallbacks keep searching.
+    openSession(yoloe, false).catch(err => console.warn('YOLOE failed to load', err));
+  } else if (!yolo.session && !yolo.failed) {
+    openSession(yolo, false).catch(err => console.warn('YOLO11n failed to load', err));
+  }
+  return null;
+}
+
 let _peCache = { key: null, tensor: null };
 
-function _promptTensor(prompts) {
+function promptTensor(prompts) {
   if (_peCache.key !== prompts.key) {
     _peCache = {
       key: prompts.key,
@@ -234,21 +157,21 @@ function _promptTensor(prompts) {
 
 /**
  * @param {HTMLVideoElement} video
- * @param {{ key: string, names: string[], dim: number, data: Float32Array } | null} prompts
+ * @param {{ key: string, names: string[], dim: number, data: Float32Array, cocoLabel: string|null } | null} prompts
  *   Prompt set from detection/prompts.js; with no prompts there is nothing to look for.
  */
 export async function runInference(video, prompts) {
   if (!prompts?.names?.length) return [];
-  const session = _session || await loadModel();
+  const detector = chooseDetector(prompts);
+  if (!detector) return [];
 
   const vw = video.videoWidth  || 640;
   const vh = video.videoHeight || 480;
-
   const scale = Math.min(INPUT_W / vw, INPUT_H / vh);
   const sw = Math.round(vw * scale);
   const sh = Math.round(vh * scale);
-  const pad_x = Math.round((INPUT_W - sw) / 2);
-  const pad_y = Math.round((INPUT_H - sh) / 2);
+  const padX = Math.round((INPUT_W - sw) / 2);
+  const padY = Math.round((INPUT_H - sh) / 2);
 
   const canvas = document.createElement('canvas');
   canvas.width  = INPUT_W;
@@ -256,7 +179,7 @@ export async function runInference(video, prompts) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, INPUT_W, INPUT_H);
-  ctx.drawImage(video, pad_x, pad_y, sw, sh);
+  ctx.drawImage(video, padX, padY, sw, sh);
 
   const px = ctx.getImageData(0, 0, INPUT_W, INPUT_H).data;
   const n  = INPUT_W * INPUT_H;
@@ -266,11 +189,20 @@ export async function runInference(video, prompts) {
     buf[n + i]     = px[i * 4 + 1] / 255;
     buf[2 * n + i] = px[i * 4 + 2] / 255;
   }
+  const images = new ort.Tensor('float32', buf, [1, 3, INPUT_H, INPUT_W]);
 
-  const input = new ort.Tensor('float32', buf, [1, 3, INPUT_H, INPUT_W]);
-  const out   = await session.run({ images: input, pe: _promptTensor(prompts) });
-  const raw   = out[Object.keys(out)[0]].data;
-  const numClasses = prompts.names.length;
+  let raw, numClasses, labelFor;
+  if (detector === 'yoloe') {
+    const out = await models.yoloe.session.run({ images, pe: promptTensor(prompts) });
+    raw = out[Object.keys(out)[0]].data;
+    numClasses = prompts.names.length;
+    labelFor = cls => prompts.names[cls];
+  } else {
+    const out = await models.yolo.session.run({ images });
+    raw = out[Object.keys(out)[0]].data;
+    numClasses = COCO_LABELS.length;
+    labelFor = cls => (COCO_LABELS[cls] === prompts.cocoLabel ? prompts.names[0] : COCO_LABELS[cls]);
+  }
 
   const hits = [];
   for (let i = 0; i < NUM_ANCHORS; i++) {
@@ -286,27 +218,26 @@ export async function runInference(video, prompts) {
     const bw = raw[2 * NUM_ANCHORS + i];
     const bh = raw[3 * NUM_ANCHORS + i];
 
-    const x = ((cx - bw / 2) - pad_x) / scale;
-    const y = ((cy - bh / 2) - pad_y) / scale;
-    const w = bw / scale;
-    const h = bh / scale;
-
-    hits.push({ class: prompts.names[cls], score: best, bbox: [x, y, w, h] });
+    hits.push({
+      class: labelFor(cls),
+      score: best,
+      bbox: [((cx - bw / 2) - padX) / scale, ((cy - bh / 2) - padY) / scale, bw / scale, bh / scale],
+    });
   }
 
-  return _nms(hits);
+  return nms(hits);
 }
 
-function _nms(dets) {
+function nms(dets) {
   const sorted = [...dets].sort((a, b) => b.score - a.score);
   const kept = [];
   for (const d of sorted) {
-    if (!kept.some(k => _iou(d.bbox, k.bbox) > IOU_THRESH)) kept.push(d);
+    if (!kept.some(k => iou(d.bbox, k.bbox) > IOU_THRESH)) kept.push(d);
   }
   return kept;
 }
 
-function _iou([ax, ay, aw, ah], [bx, by, bw, bh]) {
+function iou([ax, ay, aw, ah], [bx, by, bw, bh]) {
   const ix1 = Math.max(ax, bx), iy1 = Math.max(ay, by);
   const ix2 = Math.min(ax + aw, bx + bw), iy2 = Math.min(ay + ah, by + bh);
   const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);

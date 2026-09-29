@@ -2,12 +2,13 @@
 // A search feeds YOLOE the target's vector plus its look-alike negatives, so a box only counts
 // as the target when it scores higher for the target than for anything it could be confused with.
 
-import { normalizeTargetText, stringSimilarity, resolveCocoTarget } from './coco.js';
+import { normalizeTargetText, stringSimilarity, resolveCocoTarget, COCO_LABELS } from './coco.js';
 import { REFERENCE_WIDTHS_CM } from './distance.js';
 
 const PACK_JSON_URL = '/prompts/pack.json';
 const PACK_BIN_URL = '/prompts/pack.bin';
 const FUZZY_THRESHOLD = 0.8;
+const COCO_SET = new Set(COCO_LABELS);
 
 let _pack = null;
 let _loadPromise = null;
@@ -104,12 +105,21 @@ function editSimilarity(a, b) {
   return 1 - prev[b.length] / longest;
 }
 
-/** Target first, then its negatives. Returns names plus a flat [K * dim] Float32Array for the model. */
+/**
+ * Target first, then its negatives. Returns names plus a flat [K * dim] Float32Array for YOLOE, and
+ * the target's COCO class when it has one so the YOLO11n backup can search for it too.
+ */
 export function buildPromptSet(item, pack = _pack) {
   const members = [item, ...item.negatives.map(n => pack.byName.get(n)).filter(Boolean)];
   const data = new Float32Array(members.length * pack.dim);
   members.forEach((m, k) => {
     data.set(pack.vectors.subarray(m.index * pack.dim, (m.index + 1) * pack.dim), k * pack.dim);
   });
-  return { key: item.name, names: members.map(m => m.name), dim: pack.dim, data };
+  return {
+    key: item.name,
+    names: members.map(m => m.name),
+    dim: pack.dim,
+    data,
+    cocoLabel: COCO_SET.has(item.name) ? item.name : null,
+  };
 }

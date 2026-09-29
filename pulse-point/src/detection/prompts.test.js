@@ -75,6 +75,11 @@ describe('buildPromptSet', () => {
     expect(Array.from(set.data)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
+  test('marks COCO targets so the YOLO11n backup can find them', () => {
+    expect(buildPromptSet(pack.byName.get('cup'), pack).cocoLabel).toBe('cup');
+    expect(buildPromptSet(pack.byName.get('eyeglasses'), pack).cocoLabel).toBeNull();
+  });
+
   test('copies the right rows for a later item', () => {
     const set = buildPromptSet(pack.byName.get('pen'), pack);
     expect(set.names).toEqual(['pen']);
