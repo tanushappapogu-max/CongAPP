@@ -1,9 +1,29 @@
-import * as ort from 'onnxruntime-web/webgpu';
 import { COCO_LABELS } from './coco.js';
 import { FLAGS } from '../lib/flags.js';
 
-ort.env.wasm.numThreads = 1;
-ort.env.logLevel = 'error';
+// ONNX Runtime is loaded as its own chunk: its multi-threaded WASM backend starts worker threads
+// from the file it lives in, and inside our app bundle those workers would boot the whole UI.
+let ort = null;
+let _ortPromise = null;
+
+function wasmThreads() {
+  // Threads need a cross-origin-isolated page (COOP/COEP headers in vercel.json).
+  if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1;
+  const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
+  return Math.max(1, Math.min(4, cores - 1));
+}
+
+function loadOrt() {
+  if (!_ortPromise) {
+    _ortPromise = import('onnxruntime-web/webgpu').then(m => {
+      ort = m;
+      ort.env.logLevel = 'error';
+      ort.env.wasm.numThreads = wasmThreads();
+      return m;
+    });
+  }
+  return _ortPromise;
+}
 
 const INPUT_W = 640;
 const INPUT_H = 640;
@@ -70,6 +90,7 @@ function openSession(slot, useGpu) {
   if (slot.session) return Promise.resolve(slot.session);
   if (!slot.sessionPromise) {
     slot.sessionPromise = (async () => {
+      await loadOrt();
       const bytes = await fetchBytes(slot);
       const options = { graphOptimizationLevel: 'all' };
       let session = null;
@@ -114,7 +135,7 @@ export function isModelReady() {
 
 /** Which detectors are loaded and on what backend, for debugging. */
 export function getDetectorInfo() {
-  return { yoloe: models.yoloe.backend, yolo: models.yolo.backend };
+  return { yoloe: models.yoloe.backend, yolo: models.yolo.backend, threads: ort ? ort.env.wasm.numThreads : null };
 }
 
 export async function loadModel({ signal } = {}) {

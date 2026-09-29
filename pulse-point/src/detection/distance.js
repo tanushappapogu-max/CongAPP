@@ -7,7 +7,7 @@
 // phone main (1×) rear camera's field of view across the frame's long side (~64°),
 // which holds in portrait and landscape. For a 1920px long side:
 //   focal_px = (1920 / 2) / tan(32°) ≈ 1536px
-// This assumes the main camera; the 0.5× ultra-wide would need a much wider FOV.
+// Other lenses pass their own FOV (lib/camera.js lensFovDeg); the 0.5× ultra-wide is ~103°.
 //
 // Accuracy is roughly ±25–35% — much better than raw bbox-area buckets, and the
 // answer is in METERS instead of "close / very close." That number drives the
@@ -45,10 +45,10 @@ export function focalLengthPx(frameLongSidePx, fovDeg = ASSUMED_LONG_SIDE_FOV_DE
   return (frameLongSidePx / 2) / Math.tan((fovDeg / 2) * Math.PI / 180);
 }
 
-export function estimateDistanceMeters(label, bboxWidthPx, frameLongSidePx, refWidthCm = null) {
+export function estimateDistanceMeters(label, bboxWidthPx, frameLongSidePx, refWidthCm = null, fovDeg = null) {
   const ref = refWidthCm ?? REFERENCE_WIDTHS_CM[(label || '').toLowerCase()];
   if (!ref || !bboxWidthPx || !frameLongSidePx) return null;
-  const focal = focalLengthPx(frameLongSidePx);
+  const focal = focalLengthPx(frameLongSidePx, fovDeg ?? ASSUMED_LONG_SIDE_FOV_DEG);
   const distanceCm = (ref * focal) / bboxWidthPx;
   if (!isFinite(distanceCm) || distanceCm <= 0) return null;
   return distanceCm / 100;

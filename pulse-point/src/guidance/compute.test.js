@@ -120,3 +120,13 @@ describe('computeGuidance — frame orientation', () => {
     expect(portrait.distanceMeters).toBeCloseTo(landscape.distanceMeters, 5);
   });
 });
+
+describe('computeGuidance — lens field of view', () => {
+  test('the same box on a wider lens means the object is closer', () => {
+    const frame = { width: 1920, height: 1080 };
+    const box = { bbox: [900, 500, 120, 80], class: 'laptop' };
+    const normal = computeGuidance(box, frame, 0);
+    const wide = computeGuidance(box, { ...frame, fovDeg: 102 }, 0);
+    expect(wide.distanceMeters).toBeLessThan(normal.distanceMeters * 0.6);
+  });
+});

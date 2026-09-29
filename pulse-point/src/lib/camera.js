@@ -1,11 +1,14 @@
-// Camera helpers: pick the main (1×) back camera at 1× zoom, toggle torch, capture a JPEG of
-// the current frame.
+// Camera helpers: pick the widest back camera at its widest zoom, report that lens's field of
+// view for the distance math, toggle torch, capture a JPEG of the current frame.
 //
-// The main camera matters: the ultra-wide (0.5×) lens makes every object half the size in the
-// frame, so small things like keys and glasses get missed, and its much wider field of view breaks
-// the distance math, which assumes a normal lens.
+// The wide lens sees more of the room, so the user finds the target without sweeping as far. Its
+// field of view is much wider than a normal lens, so distance math must use lensFovDeg(), not the
+// main camera's ~64°.
 
+const ULTRA = /ultra/i;
+const VIRTUAL = /dual|triple/i;
 const NOT_MAIN = /ultra|tele|dual|triple|macro|depth|wide|front|user/i;
+const MAIN_LONG_SIDE_FOV_DEG = 64;
 
 /** The main back camera among enumerated devices, or null when labels don't tell us. */
 export function pickMainBackCamera(devices) {
@@ -14,35 +17,58 @@ export function pickMainBackCamera(devices) {
   return back.find(d => !NOT_MAIN.test(d.label)) || null;
 }
 
-export async function getMainCameraStream() {
+/**
+ * The dedicated ultra-wide back camera if there is one (not a multi-lens virtual camera, whose zoom
+ * scale we can't read reliably), else the main back camera.
+ */
+export function pickWideBackCamera(devices) {
+  const cameras = devices.filter(d => d.kind === 'videoinput' && d.label);
+  const back = cameras.filter(d => /back|rear|environment/i.test(d.label));
+  return back.find(d => ULTRA.test(d.label) && !VIRTUAL.test(d.label)) || pickMainBackCamera(devices);
+}
+
+export async function getWideCameraStream() {
   const size = { width: { ideal: 1920 }, height: { ideal: 1080 } };
   const first = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: 'environment' }, ...size, aspectRatio: { ideal: 16 / 9 } },
     audio: false,
   });
-  // Labels are only readable after permission is granted, so look now and switch if the browser
-  // handed us a different back camera (some pick the ultra-wide or a multi-lens virtual camera).
-  const main = pickMainBackCamera(await navigator.mediaDevices.enumerateDevices());
+  // Labels are only readable after permission is granted, so look now and switch lenses if needed.
+  const wide = pickWideBackCamera(await navigator.mediaDevices.enumerateDevices());
   const current = first.getVideoTracks()[0]?.getSettings?.().deviceId;
-  if (!main || main.deviceId === current) return first;
+  if (!wide || wide.deviceId === current) return first;
   first.getTracks().forEach(t => t.stop());
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: main.deviceId }, ...size }, audio: false });
+    return await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: wide.deviceId }, ...size }, audio: false });
   } catch {
     return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, ...size }, audio: false });
   }
 }
 
-/** Set 1× zoom where the camera supports zoom (multi-lens cameras can start at 0.5×). */
-export async function setNormalZoom(stream) {
+/** Zoom all the way out where the camera supports zoom (some Android main cameras reach ~0.6×). */
+export async function setWidestZoom(stream) {
   const track = stream?.getVideoTracks()[0];
   const zoom = track?.getCapabilities?.()?.zoom;
   if (!zoom) return;
   try {
-    await track.applyConstraints({ advanced: [{ zoom: Math.min(zoom.max, Math.max(zoom.min, 1)) }] });
+    await track.applyConstraints({ advanced: [{ zoom: zoom.min }] });
   } catch {
     // some platforms reject mid-stream zoom — fine to ignore
   }
+}
+
+/**
+ * Field of view across the frame's long side, in degrees. The main camera is ~64°; the ultra-wide
+ * lens counts as 0.5× and zoom scales from there (tan of the half-angle divides by magnification),
+ * so the ultra-wide comes out ~103°.
+ */
+export function lensFovDeg(stream) {
+  const track = stream?.getVideoTracks?.()[0];
+  if (!track) return MAIN_LONG_SIDE_FOV_DEG;
+  const zoom = track.getSettings?.().zoom || 1;
+  const magnification = (ULTRA.test(track.label || '') ? 0.5 : 1) * zoom;
+  const half = Math.atan(Math.tan((MAIN_LONG_SIDE_FOV_DEG / 2) * Math.PI / 180) / magnification);
+  return Math.min(130, Math.max(20, (2 * half * 180) / Math.PI));
 }
 
 export function hasTorchSupport(stream) {

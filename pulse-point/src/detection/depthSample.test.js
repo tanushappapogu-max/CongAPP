@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { sampleBoxDepth, currentDepthMeters } from './depthSample.js';
+import { sampleBoxDepth, currentDepthMeters, isRoughlyCentered } from './depthSample.js';
 
 function depthMap(dw, dh, fill, box = null, boxValue = 0) {
   const d = new Float32Array(dw * dh).fill(fill);
@@ -47,11 +47,24 @@ describe('currentDepthMeters', () => {
 
   test('ignores readings for a different target or that are too old', () => {
     expect(currentDepthMeters(reading, 'wallet', 100, 2000)).toBeNull();
-    expect(currentDepthMeters(reading, 'keys', 100, 1000 + 8001)).toBeNull();
+    expect(currentDepthMeters(reading, 'keys', 100, 1000 + 15001)).toBeNull();
     expect(currentDepthMeters(null, 'keys', 100, 2000)).toBeNull();
   });
 
   test('clamps to the model range', () => {
     expect(currentDepthMeters(reading, 'keys', 1, 2000)).toBe(20);
+  });
+});
+
+describe('isRoughlyCentered', () => {
+  const frame = { width: 1000, height: 1000 };
+
+  test('a box in the middle counts', () => {
+    expect(isRoughlyCentered([400, 400, 200, 200], frame)).toBe(true);
+  });
+
+  test('a box off to the side does not', () => {
+    expect(isRoughlyCentered([0, 400, 150, 200], frame)).toBe(false);
+    expect(isRoughlyCentered([400, 850, 100, 100], frame)).toBe(false);
   });
 });

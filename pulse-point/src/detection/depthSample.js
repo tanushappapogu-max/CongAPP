@@ -2,7 +2,7 @@
 
 const ROI_SHRINK = 0.2;       // ignore the outer 20% of the box on each side (mostly background)
 const FOREGROUND_PCTL = 0.3;  // objects sit in front of their background, so bias toward nearer pixels
-const MAX_DEPTH_AGE_MS = 8000;
+const MAX_DEPTH_AGE_MS = 15000; // CPU readings take seconds; the box-width ratio keeps them current
 const MIN_METERS = 0.1;
 const MAX_METERS = 20;
 
@@ -32,6 +32,17 @@ export function sampleBoxDepth(depth, dw, dh, boxRel) {
   values.sort((a, b) => a - b);
   const meters = values[Math.min(values.length - 1, Math.floor(values.length * FOREGROUND_PCTL))];
   return Math.min(MAX_METERS, Math.max(MIN_METERS, meters));
+}
+
+/**
+ * True when the box center sits in the middle half of the frame, i.e. the user is roughly facing
+ * the target. Slow (CPU) depth only runs then: while turning toward it, direction is all that matters.
+ */
+export function isRoughlyCentered(bbox, frame) {
+  const [x, y, w, h] = bbox;
+  const cx = (x + w / 2) / frame.width;
+  const cy = (y + h / 2) / frame.height;
+  return cx >= 0.25 && cx <= 0.75 && cy >= 0.25 && cy <= 0.75;
 }
 
 /**

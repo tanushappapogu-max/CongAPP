@@ -47,7 +47,7 @@ export function computeGuidance(match, frame, prevArea) {
   // Focal length comes from the frame's long side so held-upright (portrait) phones get the same
   // math as landscape; the short side made distances ~1.8× too short.
   const meters = match.depthMeters
-    ?? estimateDistanceMeters(labelForDistance, w, Math.max(frame.width, frame.height), match.refWidthCm);
+    ?? estimateDistanceMeters(labelForDistance, w, Math.max(frame.width, frame.height), match.refWidthCm, frame.fovDeg);
   const distanceText = meters != null
     ? describeDistanceMeters(meters)
     : describeDistanceArea(match.bbox, frame);

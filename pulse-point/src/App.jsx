@@ -3,7 +3,7 @@ import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-
 
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
 import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
-import { currentDepthMeters } from './detection/depthSample.js';
+import { currentDepthMeters, isRoughlyCentered } from './detection/depthSample.js';
 import { loadModel, runInference, preloadModel, isModelReady, getDetectorInfo } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { BoxTracker } from './detection/tracker.js';
@@ -13,7 +13,7 @@ import { computeGuidance } from './guidance/compute.js';
 import { Haptics } from './guidance/haptics.js';
 import { Speaker } from './guidance/speech.js';
 
-import { getMainCameraStream, setNormalZoom, stopStream } from './lib/camera.js';
+import { getWideCameraStream, setWidestZoom, lensFovDeg, stopStream } from './lib/camera.js';
 import { startListening, isVoiceSupported, extractTarget } from './lib/voice.js';
 import { loadSettings, saveSettings } from './lib/settings.js';
 
@@ -28,7 +28,8 @@ const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
 // GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
-const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 1500 };
+// GPU depth takes ~0.1–0.5 s; CPU depth takes seconds and competes with detection for the CPU.
+const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 4000 };
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -48,6 +49,7 @@ export default function App() {
   const prevAreaRef       = useRef(0);
   const foundOnceRef      = useRef(false);
   const localTargetRef    = useRef(null);
+  const lensFovRef        = useRef(null);
   const depthReadingRef   = useRef(null);
   const lastDepthRunRef   = useRef(0);
   const targetRef         = useRef('');
@@ -315,7 +317,7 @@ export default function App() {
     const tgt = sessionTarget || targetRef.current;
     if (tgt && !localTargetRef.current) resolveLocalTarget(tgt);
 
-    const frame = { width: video.videoWidth || 640, height: video.videoHeight || 480 };
+    const frame = { width: video.videoWidth || 640, height: video.videoHeight || 480, fovDeg: lensFovRef.current };
     frameRef.current = frame;
     const now = performance.now();
     guidanceTimeRef.current = now;
@@ -378,8 +380,12 @@ export default function App() {
       fromServer: true,
     } : null);
 
-    const depthInterval = DEPTH_INTERVAL_MS[getDepthBackend()] ?? DEPTH_INTERVAL_MS.wasm;
-    if (freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()) {
+    const depthOnGpu = getDepthBackend() === 'webgpu';
+    const depthInterval = depthOnGpu ? DEPTH_INTERVAL_MS.webgpu : DEPTH_INTERVAL_MS.wasm;
+    if (
+      freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()
+      && (depthOnGpu || isRoughlyCentered(freshMatch.bbox, frame))
+    ) {
       lastDepthRunRef.current = now;
       const depthBox = freshMatch.bbox;
       measureDepth(video, depthBox).then(meters => {
@@ -423,7 +429,7 @@ export default function App() {
   async function initializeCamera({ target: requestedTarget, signal }) {
     let stream = null;
     try {
-      stream = await getMainCameraStream();
+      stream = await getWideCameraStream();
       if (signal.aborted) return stream;
 
       const video = videoRef.current;
@@ -432,7 +438,8 @@ export default function App() {
       video.srcObject = stream;
       await video.play();
       if (signal.aborted) return stream;
-      await setNormalZoom(stream);
+      await setWidestZoom(stream);
+      lensFovRef.current = lensFovDeg(stream);
       if (signal.aborted) return stream;
 
       if (mountedRef.current) {
@@ -765,7 +772,7 @@ export default function App() {
 
       {debugInfo && (
         <pre className="debug-readout" aria-hidden="true">
-          {`yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'}
+          {`yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'} · threads ${debugInfo.threads ?? '-'}
 frame ${debugInfo.avgMs ?? '-'} ms · target ${debugInfo.label ?? '-'} · best ${debugInfo.best == null ? '-' : debugInfo.best.toFixed(2)}
 heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
         </pre>
