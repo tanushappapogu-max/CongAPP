@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { sampleBoxDepth, currentDepthMeters, isRoughlyCentered } from './depthSample.js';
+import { sampleBoxDepth, currentDepthMeters, isRoughlyCentered, centerSquare, boxInCrop } from './depthSample.js';
 
 function depthMap(dw, dh, fill, box = null, boxValue = 0) {
   const d = new Float32Array(dw * dh).fill(fill);
@@ -66,5 +66,24 @@ describe('isRoughlyCentered', () => {
   test('a box off to the side does not', () => {
     expect(isRoughlyCentered([0, 400, 150, 200], frame)).toBe(false);
     expect(isRoughlyCentered([400, 850, 100, 100], frame)).toBe(false);
+  });
+});
+
+describe('centerSquare / boxInCrop', () => {
+  test('landscape frame: square in the middle, full height', () => {
+    expect(centerSquare(1920, 1080)).toEqual({ left: 420, top: 0, side: 1080 });
+  });
+
+  test('portrait frame: square in the middle, full width', () => {
+    expect(centerSquare(1080, 1920)).toEqual({ left: 0, top: 420, side: 1080 });
+  });
+
+  test('a centered box maps into crop-relative coordinates', () => {
+    const crop = centerSquare(1920, 1080);
+    expect(boxInCrop([900, 440, 120, 200], crop)).toEqual([480 / 1080, 440 / 1080, 120 / 1080, 200 / 1080]);
+  });
+
+  test('a box whose center is outside the crop is skipped', () => {
+    expect(boxInCrop([50, 400, 100, 100], centerSquare(1920, 1080))).toBeNull();
   });
 });

@@ -1,10 +1,17 @@
 import { FLAGS } from '../lib/flags.js';
+import { centerSquare, boxInCrop } from './depthSample.js';
 
 // Main-thread client for the metric depth worker. One measurement at a time; callers skip
 // frames while it's busy and fall back to width-based distance when depth is unavailable.
+//
+// Depth runs on a square crop from the middle of the frame (the target is roughly centered by
+// the time we measure). On the CPU path (phones) the worker is closed after every reading so its
+// memory is handed back instead of sitting next to the detector for the whole session.
 
-const SHORT_SIDE = 518; // the model's training size; smaller inputs drift 10–25% in meters
-const PATCH = 14;
+const CROP_SIZE = FLAGS.depthSize;
+// Measured bias of the crop vs a full-frame 518 px reading on indoor photos.
+const CROP_CORRECTION = { 518: 1.03, 392: 1.15 }[CROP_SIZE];
+const RELEASE_AFTER_READING = FLAGS.forceCpu;
 
 let worker = null;
 let failed = false;
@@ -38,6 +45,14 @@ function getWorker() {
   return worker;
 }
 
+/** Close the worker; a closed worker returns all of its memory, which a live one never does. */
+function releaseWorker() {
+  if (!worker) return;
+  worker.terminate();
+  worker = null;
+  rejectAll(new Error('Depth worker released'));
+}
+
 function call(message, transfer = []) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
@@ -61,7 +76,8 @@ export function getDepthBackend() {
 
 /** Start downloading and compiling the depth model in the background. Never throws. */
 export function preloadDepth() {
-  if (!isDepthAvailable()) return Promise.resolve(false);
+  // When the worker is released after every reading there is nothing worth keeping warm.
+  if (!isDepthAvailable() || RELEASE_AFTER_READING) return Promise.resolve(false);
   return call({ type: 'load', forceCpu: FLAGS.forceCpu }).then(() => true).catch(() => {
     failed = true;
     return false;
@@ -80,10 +96,12 @@ export async function measureDepth(video, bbox) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   if (!vw || !vh) return null;
+  const crop = centerSquare(vw, vh);
+  const boxRel = boxInCrop(bbox, crop);
+  if (!boxRel) return null;
 
-  const scale = SHORT_SIDE / Math.min(vw, vh);
-  const width = Math.max(PATCH, Math.round((vw * scale) / PATCH) * PATCH);
-  const height = Math.max(PATCH, Math.round((vh * scale) / PATCH) * PATCH);
+  const width = CROP_SIZE;
+  const height = CROP_SIZE;
   canvas ||= document.createElement('canvas');
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
@@ -91,20 +109,20 @@ export async function measureDepth(video, bbox) {
   }
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-  ctx.drawImage(video, 0, 0, width, height);
+  ctx.drawImage(video, crop.left, crop.top, crop.side, crop.side, 0, 0, width, height);
   const pixels = ctx.getImageData(0, 0, width, height).data.buffer;
-  const [x, y, w, h] = bbox;
 
   busy = true;
   try {
     const result = await call(
-      { type: 'run', forceCpu: FLAGS.forceCpu, pixels, width, height, boxRel: [x / vw, y / vh, w / vw, h / vh] },
+      { type: 'run', forceCpu: FLAGS.forceCpu, pixels, width, height, boxRel },
       [pixels],
     );
-    return result.meters ?? null;
+    return result.meters == null ? null : result.meters / CROP_CORRECTION;
   } catch {
     return null;
   } finally {
+    if (RELEASE_AFTER_READING) releaseWorker();
     busy = false;
   }
 }

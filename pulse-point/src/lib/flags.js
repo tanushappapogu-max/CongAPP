@@ -3,6 +3,7 @@
 //   ?cpu=1          skip WebGPU
 //   ?gpu=1          use WebGPU even where it is off by default (Safari / iOS)
 //   ?threads=N      force the CPU backend's thread count (1 = single-threaded)
+//   ?depthsize=392  run depth on a smaller square crop (less memory, ~6% noisier)
 //   ?nodetect=1     camera + overlay only; no detection model is loaded or run
 //   ?captureonly=1  load the detector and copy each frame into its input, but never run it
 const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
@@ -27,4 +28,5 @@ export const FLAGS = {
   noDetect: params.has('nodetect'),
   captureOnly: params.has('captureonly'),
   threads: Number(params.get('threads')) || null,
+  depthSize: params.get('depthsize') === '392' ? 392 : 518,
 };
