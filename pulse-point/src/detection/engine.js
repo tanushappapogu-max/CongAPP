@@ -1,5 +1,6 @@
 import { COCO_LABELS } from './coco.js';
 import { FLAGS } from '../lib/flags.js';
+import { isRemoteConfigured, isRemoteUp, checkRemote, remoteDetect } from './remote.js';
 
 // ONNX Runtime is loaded as its own chunk: its multi-threaded WASM backend starts worker threads
 // from the file it lives in, and inside our app bundle those workers would boot the whole UI.
@@ -8,7 +9,8 @@ let _ortPromise = null;
 
 function wasmThreads() {
   if (FLAGS.threads) return FLAGS.threads;
-  // Threads need a cross-origin-isolated page (COOP/COEP headers in vercel.json).
+  // Threads need a cross-origin-isolated page (COOP/COEP headers). The site is not isolated:
+  // with isolation on, iPhone Safari crashed whenever depth ran, even single-threaded, so this is 1.
   if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1;
   const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
   return Math.max(1, Math.min(4, cores - 1));
@@ -126,6 +128,8 @@ function openSession(slot, useGpu) {
 /** Start downloading whichever detector this device will use first. */
 export async function preloadModel() {
   if (FLAGS.noDetect) return null;
+  // With a vision server the phone loads no models; just wake the server (it may be asleep).
+  if (isRemoteConfigured()) return checkRemote();
   const gpu = await hasWebGPU();
   return fetchBytes(gpu ? models.yoloe : models.yolo);
 }
@@ -136,11 +140,39 @@ export function isModelReady() {
 
 /** Which detectors are loaded and on what backend, for debugging. */
 export function getDetectorInfo() {
-  return { yoloe: models.yoloe.backend, yolo: models.yolo.backend, threads: ort ? ort.env.wasm.numThreads : null };
+  return {
+    yoloe: models.yoloe.backend,
+    yolo: models.yolo.backend,
+    threads: ort ? ort.env.wasm.numThreads : null,
+    server: isRemoteConfigured() ? (isRemoteUp() ? 'up' : 'down') : null,
+  };
 }
 
 export async function loadModel({ signal } = {}) {
   if (FLAGS.noDetect) return true;
+  if (isRemoteConfigured() && (await checkRemote())) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    return true;
+  }
+  await loadLocal();
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  return true;
+}
+
+let _localPromise = null;
+
+/** On-device detectors: the default without a server, and the fallback when it's unreachable. */
+function loadLocal() {
+  if (!_localPromise) {
+    _localPromise = _loadLocal().catch(err => {
+      _localPromise = null;
+      throw err;
+    });
+  }
+  return _localPromise;
+}
+
+async function _loadLocal() {
   const gpu = await hasWebGPU();
   if (gpu) {
     try {
@@ -152,8 +184,6 @@ export async function loadModel({ signal } = {}) {
   } else {
     await openSession(models.yolo, false);
   }
-  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  return true;
 }
 
 function chooseDetector(prompts) {
@@ -206,8 +236,12 @@ function promptTensor(prompts) {
  */
 export async function runInference(video, prompts) {
   if (FLAGS.noDetect || !prompts?.names?.length) return [];
-  const detector = chooseDetector(prompts);
-  if (!detector) return [];
+  const remote = isRemoteUp();
+  const detector = remote ? 'remote' : chooseDetector(prompts);
+  if (!detector) {
+    if (isRemoteConfigured()) loadLocal().catch(err => console.warn('Local detector failed to load', err));
+    return [];
+  }
 
   const vw = video.videoWidth  || 640;
   const vh = video.videoHeight || 480;
@@ -221,6 +255,22 @@ export async function runInference(video, prompts) {
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, INPUT_W, INPUT_H);
   ctx.drawImage(video, padX, padY, sw, sh);
+
+  if (detector === 'remote') {
+    let boxes;
+    try {
+      boxes = await remoteDetect(_canvas, prompts.key);
+    } catch (err) {
+      console.warn('Vision server unavailable; switching to on-device detection', err);
+      loadLocal().catch(e => console.warn('Local detector failed to load', e));
+      return [];
+    }
+    return (boxes || []).map(d => ({
+      class: d.class,
+      score: d.score,
+      bbox: [(d.bbox[0] - padX) / scale, (d.bbox[1] - padY) / scale, d.bbox[2] / scale, d.bbox[3] / scale],
+    }));
+  }
 
   const px = ctx.getImageData(0, 0, INPUT_W, INPUT_H).data;
   const n  = INPUT_W * INPUT_H;

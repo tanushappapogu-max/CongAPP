@@ -1,17 +1,17 @@
 import { FLAGS } from '../lib/flags.js';
 import { centerSquare, boxInCrop } from './depthSample.js';
+import { isRemoteConfigured, isRemoteUp, remoteDepth } from './remote.js';
 
 // Main-thread client for the metric depth worker. One measurement at a time; callers skip
 // frames while it's busy and fall back to width-based distance when depth is unavailable.
 //
 // Depth runs on a square crop from the middle of the frame (the target is roughly centered by
-// the time we measure). On the CPU path (phones) the worker is closed after every reading so its
-// memory is handed back instead of sitting next to the detector for the whole session.
+// the time we measure), which halves its peak memory. One worker stays alive for the session:
+// closing and reopening it every reading still crashed iPhone Safari.
 
 const CROP_SIZE = FLAGS.depthSize;
 // Measured bias of the crop vs a full-frame 518 px reading on indoor photos.
 const CROP_CORRECTION = { 518: 1.03, 392: 1.15 }[CROP_SIZE];
-const RELEASE_AFTER_READING = FLAGS.forceCpu;
 
 let worker = null;
 let failed = false;
@@ -45,14 +45,6 @@ function getWorker() {
   return worker;
 }
 
-/** Close the worker; a closed worker returns all of its memory, which a live one never does. */
-function releaseWorker() {
-  if (!worker) return;
-  worker.terminate();
-  worker = null;
-  rejectAll(new Error('Depth worker released'));
-}
-
 function call(message, transfer = []) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
@@ -69,15 +61,16 @@ export function isDepthBusy() {
   return busy;
 }
 
-/** 'webgpu' or 'wasm' once the worker has loaded a model, else null. */
+/** 'server', or 'webgpu'/'wasm' once the on-device worker has loaded a model, else null. */
 export function getDepthBackend() {
+  if (isRemoteUp() && isDepthAvailable()) return 'server';
   return backend;
 }
 
 /** Start downloading and compiling the depth model in the background. Never throws. */
 export function preloadDepth() {
-  // When the worker is released after every reading there is nothing worth keeping warm.
-  if (!isDepthAvailable() || RELEASE_AFTER_READING) return Promise.resolve(false);
+  // With a vision server, depth runs there; the on-device worker only loads if the server fails.
+  if (!isDepthAvailable() || isRemoteConfigured()) return Promise.resolve(false);
   return call({ type: 'load', forceCpu: FLAGS.forceCpu }).then(() => true).catch(() => {
     failed = true;
     return false;
@@ -110,6 +103,18 @@ export async function measureDepth(video, bbox) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(video, crop.left, crop.top, crop.side, crop.side, 0, 0, width, height);
+
+  if (isRemoteUp()) {
+    busy = true;
+    try {
+      return await remoteDepth(canvas, boxRel);
+    } catch {
+      return null;
+    } finally {
+      busy = false;
+    }
+  }
+
   const pixels = ctx.getImageData(0, 0, width, height).data.buffer;
 
   busy = true;
@@ -122,7 +127,6 @@ export async function measureDepth(video, bbox) {
   } catch {
     return null;
   } finally {
-    if (RELEASE_AFTER_READING) releaseWorker();
     busy = false;
   }
 }

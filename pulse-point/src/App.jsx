@@ -29,7 +29,7 @@ const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
 // GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
 // GPU depth takes ~0.1–0.5 s; CPU depth takes seconds and competes with detection for the CPU.
-const DEPTH_INTERVAL_MS = { webgpu: 500, wasm: 4000 };
+const DEPTH_INTERVAL_MS = { webgpu: 500, server: 1000, wasm: 4000 };
 
 const SENSITIVITY_PROFILES = {
   gentle: { hapticGap: 720, announceGap: 1700 },
@@ -381,11 +381,12 @@ export default function App() {
       fromServer: true,
     } : null);
 
-    const depthOnGpu = getDepthBackend() === 'webgpu';
-    const depthInterval = depthOnGpu ? DEPTH_INTERVAL_MS.webgpu : DEPTH_INTERVAL_MS.wasm;
+    const depthBackend = getDepthBackend();
+    const depthFast = depthBackend === 'webgpu' || depthBackend === 'server';
+    const depthInterval = DEPTH_INTERVAL_MS[depthBackend] ?? DEPTH_INTERVAL_MS.wasm;
     if (
       freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()
-      && (depthOnGpu || isRoughlyCentered(freshMatch.bbox, frame))
+      && (depthFast || isRoughlyCentered(freshMatch.bbox, frame))
     ) {
       lastDepthRunRef.current = now;
       const depthBox = freshMatch.bbox;
@@ -773,7 +774,7 @@ export default function App() {
 
       {debugInfo && (
         <pre className="debug-readout" aria-hidden="true">
-          {`yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'} · threads ${debugInfo.threads ?? '-'}
+          {`server ${debugInfo.server ?? '-'} · yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'} · threads ${debugInfo.threads ?? '-'}
 frame ${debugInfo.avgMs ?? '-'} ms · target ${debugInfo.label ?? '-'} · best ${debugInfo.best == null ? '-' : debugInfo.best.toFixed(2)}
 heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
         </pre>
