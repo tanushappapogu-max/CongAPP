@@ -20,7 +20,7 @@ image = (
         "python-multipart==0.0.9",
         "numpy<2.3",
         "Pillow==11.0.0",
-        "onnxruntime-gpu==1.20.1",
+        "onnxruntime-gpu==1.20.2",
     )
     .env({"PULSEPOINT_ASSETS": "/assets"})
     .add_local_file(PUBLIC / "yoloe-11s.onnx", "/assets/yoloe-11s.onnx")

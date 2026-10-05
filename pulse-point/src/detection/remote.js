@@ -4,7 +4,8 @@
 // Anything that fails here falls back to on-device inference.
 import { FLAGS } from '../lib/flags.js';
 
-const DEFAULT_URL = import.meta.env.VITE_VISION_URL || '';
+// The Modal deployment (server/vision/modal_vision.py). VITE_VISION_URL overrides it; ?server=off disables it.
+const DEFAULT_URL = import.meta.env.VITE_VISION_URL || 'https://tanush-appapogu--pulse-point-vision-web.modal.run';
 const BASE = FLAGS.serverOff ? '' : (FLAGS.server || DEFAULT_URL).replace(/\/$/, '');
 const JPEG_QUALITY = 0.8;
 const REQUEST_TIMEOUT_MS = 6000;
