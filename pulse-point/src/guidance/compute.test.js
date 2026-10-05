@@ -107,6 +107,13 @@ describe('computeGuidance — depth readings', () => {
     expect(byDepth.signal).toBe('reach');
   });
 
+  test('small item: a too-far depth reading does not hold back reach', () => {
+    // AirPods case (5 cm) filling 120 px of a 640 px frame is ~0.25 m away by width; depth said 0.9 m.
+    const result = computeGuidance({ bbox: [260, 200, 120, 80], class: 'earbuds', refWidthCm: 5, depthMeters: 0.9 }, FRAME, 0);
+    expect(result.distanceMeters).toBeLessThan(0.55);
+    expect(result.signal).toBe('reach');
+  });
+
   test('without depth, a small centered box is not a reach', () => {
     const result = computeGuidance({ bbox: [300, 220, 40, 40], class: 'laptop', depthMeters: null }, FRAME, 0);
     expect(result.signal).not.toBe('reach');

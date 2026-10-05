@@ -81,3 +81,33 @@ export function formatMeters(m) {
   if (m < 10) return `${m.toFixed(1)} m`;
   return `${Math.round(m)} m`;
 }
+
+// Items narrower than this (AirPods, keys, glasses, a pill bottle) cover only a few of Depth
+// Anything's 14-px patches until they're very close, so its reading blends in the table or wall
+// behind them and comes out too far: users had to get much nearer than "reach" before hearing it.
+// For them the width estimate is trusted whenever it says closer.
+export const SMALL_ITEM_CM = 15;
+
+/**
+ * The distance guidance uses. Depth Anything wins for normal-size objects; for small ones the
+ * nearer of the two readings, since depth's error on them is almost always "too far".
+ * @param {number|null} depthMeters  Depth Anything reading carried to the current box width
+ * @param {number|null} widthMeters  estimate from box width + typical real width
+ * @param {number|null} refWidthCm   the item's typical width
+ */
+export function fuseDistance(depthMeters, widthMeters, refWidthCm) {
+  if (depthMeters == null) return widthMeters;
+  if (widthMeters == null) return depthMeters;
+  return refWidthCm != null && refWidthCm < SMALL_ITEM_CM ? Math.min(depthMeters, widthMeters) : depthMeters;
+}
+
+// Depth Anything only runs once the width estimate says the target is within this range: from
+// farther away the user is still turning and walking, and the width estimate is plenty. Close in,
+// where "reach" is decided, is where depth's accuracy matters.
+export const DEPTH_START_METERS = 2;
+// Without a typical width for the item, start once its box covers this much of the frame.
+export const DEPTH_START_AREA = 0.02;
+
+export function isCloseEnoughForDepth(widthMeters, areaFraction) {
+  return widthMeters != null ? widthMeters < DEPTH_START_METERS : areaFraction > DEPTH_START_AREA;
+}

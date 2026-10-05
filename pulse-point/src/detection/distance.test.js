@@ -5,6 +5,8 @@ import {
   describeDistanceArea,
   formatMeters,
   focalLengthPx,
+  fuseDistance,
+  isCloseEnoughForDepth,
 } from './distance.js';
 
 describe('focalLengthPx', () => {
@@ -127,5 +129,38 @@ describe('formatMeters', () => {
 
   test('>= 10 m → rounded integer string', () => {
     expect(formatMeters(15.3)).toBe('15 m');
+  });
+});
+
+describe('fuseDistance', () => {
+  test('normal-size objects use the depth reading', () => {
+    expect(fuseDistance(1.2, 0.8, 35)).toBe(1.2);
+  });
+
+  test('small objects use whichever reading is nearer', () => {
+    expect(fuseDistance(0.9, 0.4, 5)).toBe(0.4);
+    expect(fuseDistance(0.3, 0.6, 5)).toBe(0.3);
+  });
+
+  test('falls back to whichever reading exists', () => {
+    expect(fuseDistance(null, 0.7, 5)).toBe(0.7);
+    expect(fuseDistance(0.7, null, 5)).toBe(0.7);
+    expect(fuseDistance(null, null, 5)).toBeNull();
+  });
+
+  test('unknown width means depth wins', () => {
+    expect(fuseDistance(1.0, 0.5, null)).toBe(1.0);
+  });
+});
+
+describe('isCloseEnoughForDepth', () => {
+  test('starts depth inside 2 m by the width estimate', () => {
+    expect(isCloseEnoughForDepth(3.5, 0.5)).toBe(false);
+    expect(isCloseEnoughForDepth(1.5, 0.001)).toBe(true);
+  });
+
+  test('without a width estimate, uses box area', () => {
+    expect(isCloseEnoughForDepth(null, 0.01)).toBe(false);
+    expect(isCloseEnoughForDepth(null, 0.05)).toBe(true);
   });
 });

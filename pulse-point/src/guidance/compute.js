@@ -8,7 +8,7 @@
 // otherwise "tilt up/down". Picking the dominant axis (instead of always
 // emitting both) keeps the haptic vocabulary discriminable.
 
-import { estimateDistanceMeters, describeDistanceMeters, describeDistanceArea, formatMeters } from '../detection/distance.js';
+import { estimateDistanceMeters, fuseDistance, describeDistanceMeters, describeDistanceArea, formatMeters, REFERENCE_WIDTHS_CM } from '../detection/distance.js';
 
 // Center sweet spot
 const H_LEFT = 0.40, H_RIGHT = 0.60;
@@ -46,8 +46,9 @@ export function computeGuidance(match, frame, prevArea) {
   const labelForDistance = (match.class || match.label || '').toLowerCase();
   // Focal length comes from the frame's long side so held-upright (portrait) phones get the same
   // math as landscape; the short side made distances ~1.8× too short.
-  const meters = match.depthMeters
-    ?? estimateDistanceMeters(labelForDistance, w, Math.max(frame.width, frame.height), match.refWidthCm, frame.fovDeg);
+  const refWidthCm = match.refWidthCm ?? REFERENCE_WIDTHS_CM[labelForDistance] ?? null;
+  const widthMeters = estimateDistanceMeters(labelForDistance, w, Math.max(frame.width, frame.height), refWidthCm, frame.fovDeg);
+  const meters = fuseDistance(match.depthMeters ?? null, widthMeters, refWidthCm);
   const distanceText = meters != null
     ? describeDistanceMeters(meters)
     : describeDistanceArea(match.bbox, frame);

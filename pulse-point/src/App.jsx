@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ScanLine, Square, Mic, Settings as SettingsIcon } from 'lucide-react';
 
 import { loadPromptPack, resolvePromptTarget, buildPromptSet } from './detection/prompts.js';
-import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
+import { measureDepth, isDepthBusy, getDepthBackend } from './detection/depth.js';
 import { currentDepthMeters, isRoughlyCentered } from './detection/depthSample.js';
+import { estimateDistanceMeters, isCloseEnoughForDepth } from './detection/distance.js';
 import { loadModel, runInference, preloadModel, isModelReady, getDetectorInfo } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
 import { isRemoteUp } from './detection/remote.js';
@@ -408,6 +409,10 @@ export default function App() {
     if (
       freshMatch && ranLight && now - lastDepthRunRef.current >= depthInterval && !isDepthBusy()
       && (depthFast || isRoughlyCentered(freshMatch.bbox, frame))
+      && isCloseEnoughForDepth(
+        estimateDistanceMeters(null, freshMatch.bbox[2], Math.max(frame.width, frame.height), localInfo?.widthCm ?? null, frame.fovDeg),
+        (freshMatch.bbox[2] * freshMatch.bbox[3]) / (frame.width * frame.height),
+      )
     ) {
       lastDepthRunRef.current = now;
       const depthBox = freshMatch.bbox;
@@ -478,7 +483,6 @@ export default function App() {
   async function initializeModel({ target: requestedTarget, signal }) {
     const [model] = await Promise.all([loadModel({ signal }), loadPromptPack({ signal })]);
     if (requestedTarget && !localTargetRef.current) resolveLocalTarget(requestedTarget);
-    void preloadDepth();
 
     if (!signal.aborted && mountedRef.current) {
       setStatus('looking');

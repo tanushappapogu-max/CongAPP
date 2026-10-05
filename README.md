@@ -47,6 +47,8 @@ Haptics + speech
 ### How far away it is: Depth Anything + lens geometry
 
 - **Depth Anything V2 Metric-Indoor-Small** returns distance in meters. It runs on the **largest centered square** of the frame (518 px) rather than the whole wide frame: on indoor photos that reads within ~2% of the full frame (after a fixed ×1/1.03 correction) at about **half the memory** (~280 MB peak vs ~550 MB), because the model compares every image patch with every other.
+- **Depth only runs for the last ~2 m.** Farther out, the user is still turning and walking, and the width estimate (below) is enough. On the on-device fallback, the depth model isn't even loaded until then.
+- **Small items (under 15 cm: AirPods, keys, glasses)** cover only a few of the depth model's patches until they're very close, so its reading blends in the table behind them and reads too far. For them, guidance uses whichever is nearer: the depth reading or the width estimate. Otherwise "reach" came far too late.
 - **Between depth readings**, distance follows the box size (twice as wide = half as far), so guidance updates every frame.
 - **The camera uses the widest back lens** (the 0.5× ultra-wide on iPhone) so the user finds the target without sweeping as far. The width-based distance math uses that lens's real field of view (~103° vs ~64° for the main camera; `lensFovDeg` in `pulse-point/src/lib/camera.js`) and the frame's long side, so it's right in portrait and landscape.
 
