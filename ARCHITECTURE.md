@@ -1,4 +1,4 @@
-# Pulse Point Architecture
+# 6ixth Sense Architecture
 
 This document describes the supported browser app and the adjacent experimental services. `pulse-point/` is the active web client. `pulse-point-mobile/` is a separate exploratory/degraded prototype, not an equivalent production client.
 

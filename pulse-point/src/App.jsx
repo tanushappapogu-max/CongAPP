@@ -487,7 +487,7 @@ export default function App() {
     if (!signal.aborted && mountedRef.current) {
       setStatus('looking');
       setAnnouncement(requestedTarget ? `Looking for ${requestedTarget}.` : 'Camera active. Say or type a target.');
-      speakerRef.current.say('Pulse Point ready.', { urgent: true });
+      speakerRef.current.say('Sixth Sense ready.', { urgent: true });
     }
     return model;
   }
@@ -787,7 +787,7 @@ export default function App() {
       {showWelcome && <WelcomeOverlay onDismiss={dismissWelcome} />}
 
       <main className={`scanner signal-${signal}`}>
-      <h1 className="sr-only">Pulse Point Object Finder</h1>
+      <h1 className="sr-only">Sixth Sense Object Finder</h1>
       <video ref={videoRef} playsInline muted aria-hidden="true" />
       <canvas
         ref={canvasRef}

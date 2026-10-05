@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Pulse Point are documented here.
+All notable changes to 6ixth Sense (formerly Pulse Point) are documented here.
 
 ## [0.2.0] - 2026-05-20
 

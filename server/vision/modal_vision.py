@@ -1,4 +1,4 @@
-"""Modal deployment for the Pulse Point vision server (YOLOE + Depth Anything on a T4 GPU).
+"""Modal deployment for the 6ixth Sense vision server (YOLOE + Depth Anything on a T4 GPU).
 
 Deploy (from repo root, after `pip install modal && python3 -m modal setup`):
   modal deploy server/vision/modal_vision.py

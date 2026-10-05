@@ -1,4 +1,4 @@
-# Contributing to Pulse Point
+# Contributing to 6ixth Sense
 
 ## Branching
 

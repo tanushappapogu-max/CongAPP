@@ -1,11 +1,11 @@
-# Pulse Point
+# 6ixth Sense
 
 **Live demo:** https://pulse-point-steel.vercel.app
 
 [![Tests](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml/badge.svg)](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Pulse Point is a browser-based prototype that helps a blind or low-vision user find a named object with haptics and speech. You say or type what you're looking for ("my glasses", "keys", "a cup"); the camera finds it; the phone tells you which way to turn, then how far away it is, until you can reach it.
+6ixth Sense (formerly Pulse Point) is a browser-based prototype that helps a blind or low-vision user find a named object with haptics and speech. You say or type what you're looking for ("my glasses", "keys", "a cup"); the camera finds it; the phone tells you which way to turn, then how far away it is, until you can reach it.
 
 The supported app is `pulse-point/` (React + Vite + ONNX Runtime Web). It is a prototype: it has not been validated for independent mobility, obstacle avoidance, or any safety-critical use.
 
@@ -215,4 +215,4 @@ Import the repo into Vercel and keep the repository root as the root directory. 
 - [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) Metric-Indoor-Small: fine-tuned by its authors from the Apache-2.0 Small model on the Hypersim dataset; its model card states no separate license.
 - [MobileCLIP](https://github.com/apple/ml-mobileclip) text encoder (used offline to build the prompt pack), [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html), [FastAPI](https://fastapi.tiangolo.com/).
 
-Pulse Point application code is licensed under the MIT License; see [LICENSE](LICENSE).
+6ixth Sense application code is licensed under the MIT License; see [LICENSE](LICENSE).

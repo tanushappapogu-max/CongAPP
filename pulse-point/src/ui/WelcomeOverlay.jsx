@@ -54,7 +54,7 @@ export default function WelcomeOverlay({ onDismiss }) {
         aria-labelledby="welcome-title"
         aria-describedby="welcome-description"
       >
-        <p className="welcome-kicker">PULSE POINT / FIELD GUIDE</p>
+        <p className="welcome-kicker" aria-label="Sixth Sense field guide">6IXTH SENSE / FIELD GUIDE</p>
         <h2 id="welcome-title">Find what’s near you.</h2>
         <p id="welcome-description" className="welcome-tagline">
           Find nearby objects through your camera, vibration, and voice.

@@ -1,4 +1,4 @@
-"""Pulse Point vision server: runs YOLOE detection and Depth Anything for the phone.
+"""6ixth Sense vision server: runs YOLOE detection and Depth Anything for the phone.
 
 The phone keeps the camera, tracker, guidance, haptics and speech; it sends a small JPEG here and
 gets boxes (and, every couple of seconds, a distance) back. It uses the exact model files and
@@ -46,7 +46,7 @@ RATE_LIMIT_PER_MIN = 900  # ~15 req/s per IP covers one phone scanning at full s
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
-app = FastAPI(title="Pulse Point Vision")
+app = FastAPI(title="6ixth Sense Vision")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),

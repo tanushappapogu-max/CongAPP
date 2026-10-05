@@ -16,7 +16,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     // eslint-disable-next-line no-console
-    console.error('Pulse Point crashed:', error, info);
+    console.error('6ixth Sense crashed:', error, info);
 
     if (typeof fetch === 'function') {
       fetch('/api/error', {
@@ -42,7 +42,7 @@ export default class ErrorBoundary extends React.Component {
 
     return (
       <main className="crash-screen" role="alert">
-        <h1>Pulse Point hit an error</h1>
+        <h1 aria-label="Sixth Sense hit an error">6ixth Sense hit an error</h1>
         <p>
           The app crashed. Your camera and data are safe. Reload to try again.
         </p>

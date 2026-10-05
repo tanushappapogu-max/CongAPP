@@ -1,4 +1,4 @@
-// Service worker for Pulse Point.
+// Service worker for 6ixth Sense.
 // The web detector loads the YOLOE model, its prompt pack, the YOLO11n backup, and the
 // depth models from the public root. Keep this list exact so stale model formats are not mixed into the
 // runtime cache. The prompt pack must match the model, so bump CACHE_VERSION whenever

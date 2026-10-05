@@ -1,10 +1,10 @@
-# Pulse Point Technical Overview
+# 6ixth Sense Technical Overview
 
 This document describes the implementation in the supported web app and the adjacent experimental server as they exist in this repository. It is an implementation reference, not a performance, safety, clinical, or accessibility validation report.
 
 ## Product Scope and Status
 
-Pulse Point is a browser prototype for finding a named object and presenting direction/proximity cues through a visual overlay, speech, and device vibration where supported. The active web client is pulse-point/. The Expo app in pulse-point-mobile/ is a separate exploratory/degraded prototype.
+6ixth Sense is a browser prototype for finding a named object and presenting direction/proximity cues through a visual overlay, speech, and device vibration where supported. The active web client is pulse-point/. The Expo app in pulse-point-mobile/ is a separate exploratory/degraded prototype.
 
 The project has not been validated for independent mobility, obstacle avoidance, route planning, or safety-critical use. A detection, distance estimate, or "reach" announcement must not be interpreted as proof that an object is safe to approach or touch. The repository includes unit tests for logic modules; it does not currently contain a representative device/scene accuracy benchmark or human-factors validation.
 
