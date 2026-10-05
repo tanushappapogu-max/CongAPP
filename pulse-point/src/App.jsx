@@ -6,6 +6,7 @@ import { preloadDepth, measureDepth, isDepthBusy, getDepthBackend } from './dete
 import { currentDepthMeters, isRoughlyCentered } from './detection/depthSample.js';
 import { loadModel, runInference, preloadModel, isModelReady, getDetectorInfo } from './detection/engine.js';
 import { detectWithServer, isServerAvailable } from './detection/server.js';
+import { isRemoteUp } from './detection/remote.js';
 import { BoxTracker } from './detection/tracker.js';
 import { createScannerSession, SCANNER_EVENTS } from './scanner/scannerSession.js';
 
@@ -27,6 +28,8 @@ const ADAPTIVE_FPS_MAX = 15;
 const ADAPTIVE_FPS_INITIAL = 10;
 const ADAPTIVE_SLACK_MS = 25;
 const HEAVY_COOLDOWN_MS = 2500;
+const REMOTE_IN_FLIGHT = 2;
+const REMOTE_MIN_INTERVAL_MS = 66; // with the vision server, round trips (not this) set the pace
 // GPU depth takes ~0.1–0.5 s, CPU depth several seconds; don't queue work faster than it finishes.
 // GPU depth takes ~0.1–0.5 s; CPU depth takes seconds and competes with detection for the CPU.
 const DEPTH_INTERVAL_MS = { webgpu: 500, server: 1000, wasm: 4000 };
@@ -46,6 +49,10 @@ export default function App() {
   const mountedRef        = useRef(true);
   const lastLightRunRef   = useRef(0);
   const lastPredsRef      = useRef([]);
+  const freshPredsRef     = useRef(false);
+  const inferInFlightRef  = useRef(0);
+  const inferSeqRef       = useRef(0);
+  const appliedSeqRef     = useRef(0);
   const prevAreaRef       = useRef(0);
   const foundOnceRef      = useRef(false);
   const localTargetRef    = useRef(null);
@@ -182,6 +189,7 @@ export default function App() {
     foundOnceRef.current  = false;
     lastLightRunRef.current = 0;
     lastPredsRef.current = [];
+    freshPredsRef.current = false;
     localTargetRef.current = null;
     trackerRef.current.reset();
     lastAnnouncedSignalRef.current = '';
@@ -322,26 +330,39 @@ export default function App() {
     const now = performance.now();
     guidanceTimeRef.current = now;
 
-    const lightInterval = 1000 / lightFpsRef.current;
-    const ranLight = now - lastLightRunRef.current >= lightInterval;
-
-    let predictions = lastPredsRef.current;
-    if (ranLight) {
+    // Inference runs in the background so the overlay and guidance update every frame instead of
+    // waiting on it; that matters most with the vision server, where a round trip is ~250 ms+.
+    // With the server, two requests overlap to hide network latency; a reply older than one
+    // already applied is dropped.
+    const remote = isRemoteUp();
+    const lightInterval = remote ? REMOTE_MIN_INTERVAL_MS : 1000 / lightFpsRef.current;
+    const maxInFlight = remote ? REMOTE_IN_FLIGHT : 1;
+    if (inferInFlightRef.current < maxInFlight && now - lastLightRunRef.current >= lightInterval) {
       lastLightRunRef.current = now;
+      inferInFlightRef.current += 1;
+      const seq = ++inferSeqRef.current;
       const t0 = performance.now();
-      try {
-        predictions = await runInference(video, localTargetRef.current?.prompts ?? null);
-        if (signal.aborted) return null;
-        lastPredsRef.current = Array.isArray(predictions) ? predictions : [];
-        predictions = lastPredsRef.current;
-        const elapsed = performance.now() - t0;
-        recordInferenceTime(elapsed);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('Inference error', e);
-        predictions = lastPredsRef.current;
-      }
+      runInference(video, localTargetRef.current?.prompts ?? null)
+        .then(preds => {
+          if (signal.aborted || seq < appliedSeqRef.current) return;
+          appliedSeqRef.current = seq;
+          lastPredsRef.current = Array.isArray(preds) ? preds : [];
+          freshPredsRef.current = true;
+          recordInferenceTime(performance.now() - t0);
+        })
+        .catch(e => {
+          // eslint-disable-next-line no-console
+          console.warn('Inference error', e);
+        })
+        .finally(() => {
+          inferInFlightRef.current -= 1;
+        });
     }
+
+    // True on the first frame after new detections arrive: the tracker and depth only act on fresh results.
+    const ranLight = freshPredsRef.current;
+    freshPredsRef.current = false;
+    const predictions = lastPredsRef.current;
 
     if (signal.aborted) return null;
 

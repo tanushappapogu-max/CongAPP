@@ -5,7 +5,7 @@
 import { FLAGS } from '../lib/flags.js';
 
 // The Modal deployment (server/vision/modal_vision.py). VITE_VISION_URL overrides it; ?server=off disables it.
-const DEFAULT_URL = import.meta.env.VITE_VISION_URL || 'https://tanush-appapogu--pulse-point-vision-web.modal.run';
+const DEFAULT_URL = import.meta.env.VITE_VISION_URL || 'https://tanush-appapogu--pulse-point-vision-fast.us-east.modal.direct';
 const BASE = FLAGS.serverOff ? '' : (FLAGS.server || DEFAULT_URL).replace(/\/$/, '');
 const JPEG_QUALITY = 0.8;
 const REQUEST_TIMEOUT_MS = 6000;
@@ -29,26 +29,39 @@ function markDown() {
   downSince = Date.now();
 }
 
-/** Health check. The first one can take ~10–30 s while a sleeping server starts. */
-export function checkRemote(timeoutMs = 30000) {
+/**
+ * Health check. A sleeping server answers 503 for the ~20–60 s it takes to start, so keep asking
+ * until it's up or the time runs out.
+ */
+export function checkRemote(timeoutMs = 90000) {
   if (!BASE) return Promise.resolve(false);
   if (!checkPromise) {
     state = 'checking';
-    checkPromise = fetch(`${BASE}/health`, { signal: AbortSignal.timeout(timeoutMs) })
-      .then(r => {
-        if (r.ok) state = 'up';
+    checkPromise = waitForHealth(Date.now() + timeoutMs)
+      .then(ok => {
+        if (ok) state = 'up';
         else markDown();
-        return state === 'up';
-      })
-      .catch(() => {
-        markDown();
-        return false;
+        return ok;
       })
       .finally(() => {
         checkPromise = null;
       });
   }
   return checkPromise;
+}
+
+async function waitForHealth(deadline) {
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(Math.max(1000, deadline - Date.now())) });
+      if (r.ok) return true;
+      if (r.status !== 503) return false;
+    } catch {
+      // The proxy's 503 may lack CORS headers, which surfaces here as a network error: keep waiting.
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+  return false;
 }
 
 // toDataURL is synchronous (~5 ms for 640×640); toBlob runs as a low-priority task and took ~1 s
@@ -67,7 +80,7 @@ async function post(path, fields, canvas) {
   form.append('file', toJpeg(canvas), 'frame.jpg');
   try {
     const r = await fetch(`${BASE}${path}`, { method: 'POST', body: form, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (r.status === 429) return null; // rate limited: skip this frame, stay up
+    if (r.status === 429 || r.status === 503) return null; // rate limited / container restarting: skip this frame
     if (!r.ok) throw new Error(`${path} ${r.status}`);
     return await r.json();
   } catch (err) {

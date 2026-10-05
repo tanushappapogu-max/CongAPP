@@ -191,7 +191,7 @@ Import the repo into Vercel and keep the repository root as the root directory. 
 
 | Variable | Description |
 |---|---|
-| `VITE_VISION_URL` | Overrides the vision server URL (defaults to the Modal deployment, `https://tanush-appapogu--pulse-point-vision-web.modal.run`). When healthy, detection and depth run there and frames are uploaded while scanning. Vite exposes `VITE_*` values to the browser, so this must not contain a secret. |
+| `VITE_VISION_URL` | Overrides the vision server URL (defaults to the Modal deployment, `https://tanush-appapogu--pulse-point-vision-fast.us-east.modal.direct`). When healthy, detection and depth run there and frames are uploaded while scanning. Vite exposes `VITE_*` values to the browser, so this must not contain a secret. |
 | `VITE_SERVER_URL` | Optional URL for the legacy LocateAnything server. When healthy, it is queried about every 2.5 s while scanning. |
 | `OPENROUTER_API_KEY` | Only for the legacy `/api/ai` proxy, which the app doesn't call. Never prefix a secret with `VITE_`. |
 | `ALLOWED_ORIGIN` | Optional origin for the legacy `/api/ai` proxy (defaults to `https://pulse-point-steel.vercel.app`). |

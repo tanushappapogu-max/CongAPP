@@ -3,7 +3,7 @@
 Deploy (from repo root, after `pip install modal && python3 -m modal setup`):
   modal deploy server/vision/modal_vision.py
 
-The printed URL is the web app's vision server (pulse-point/src/detection/remote.js). The container
+The printed *.modal.direct URL is the web app's vision server (pulse-point/src/detection/remote.js). The container
 sleeps after a few idle minutes and Modal bills only while it runs.
 """
 from pathlib import Path
@@ -18,6 +18,7 @@ image = (
     .pip_install(
         "fastapi==0.115.0",
         "python-multipart==0.0.9",
+        "uvicorn==0.32.0",
         "numpy<2.3",
         "Pillow==11.0.0",
         "onnxruntime-gpu==1.20.2",
@@ -33,13 +34,15 @@ image = (
 app = modal.App("pulse-point-vision")
 
 
-@app.function(image=image, gpu="T4", timeout=600, scaledown_window=300)
-@modal.concurrent(max_inputs=16)
-@modal.asgi_app()
-def web():
-    import sys
+# Modal's direct HTTP routing: requests go straight to uvicorn in the container. A detection round trip
+# was ~45 ms this way vs ~215 ms through @modal.asgi_app, whose per-request dispatch added ~190 ms.
+@app.server(image=image, gpu="T4", port=8000, routing_region="us-east", scaledown_window=300, unauthenticated=True)
+class Fast:
+    @modal.enter()
+    def start(self):
+        import subprocess
 
-    sys.path.insert(0, "/app/server/vision")
-    from vision_app import app as fastapi_app
-
-    return fastapi_app
+        self.proc = subprocess.Popen(
+            ["python", "-m", "uvicorn", "vision_app:app", "--host", "0.0.0.0", "--port", "8000"],
+            cwd="/app/server/vision",
+        )
