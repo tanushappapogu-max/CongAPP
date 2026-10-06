@@ -1,6 +1,6 @@
 # 6ixth Sense
 
-**Live demo:** https://pulse-point-steel.vercel.app
+**Live demo:** https://6ixthsense.vercel.app
 
 [![Tests](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml/badge.svg)](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -97,7 +97,7 @@ brew install cloudflared
 cloudflared tunnel --url http://localhost:8788
 ```
 
-Open `https://pulse-point-steel.vercel.app/?server=<the trycloudflare.com link>` on the phone.
+Open `https://6ixthsense.vercel.app/?server=<the trycloudflare.com link>` on the phone.
 
 **Deploy to Modal:**
 
@@ -126,7 +126,7 @@ The vision server sidesteps all of this. The on-device path remains as the offli
 
 ## URL switches (testing and diagnosis)
 
-Add these to the URL, e.g. `https://pulse-point-steel.vercel.app/?debug=1&nodepth=1`.
+Add these to the URL, e.g. `https://6ixthsense.vercel.app/?debug=1&nodepth=1`.
 
 | Switch | Effect |
 |---|---|
@@ -196,7 +196,7 @@ Import the repo into Vercel and keep the repository root as the root directory. 
 | `VITE_VISION_URL` | Overrides the vision server URL (defaults to the Modal deployment, `https://tanush-appapogu--pulse-point-vision-fast.us-east.modal.direct`). When healthy, detection and depth run there and frames are uploaded while scanning. Vite exposes `VITE_*` values to the browser, so this must not contain a secret. |
 | `VITE_SERVER_URL` | Optional URL for the legacy LocateAnything server. When healthy, it is queried about every 2.5 s while scanning. |
 | `OPENROUTER_API_KEY` | Only for the legacy `/api/ai` proxy, which the app doesn't call. Never prefix a secret with `VITE_`. |
-| `ALLOWED_ORIGIN` | Optional origin for the legacy `/api/ai` proxy (defaults to `https://pulse-point-steel.vercel.app`). |
+| `ALLOWED_ORIGIN` | Optional origin for the legacy `/api/ai` proxy (defaults to `https://6ixthsense.vercel.app`). |
 
 ---
 

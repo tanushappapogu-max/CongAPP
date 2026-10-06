@@ -23,6 +23,9 @@ MAX_TARGET_LENGTH = 64
 ALLOWED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 
 DEFAULT_CORS_ORIGINS = (
+    "https://6ixthsense.vercel.app",
+    # Old Pulse Point URL: still serves this app until its Vercel project is pointed back at the
+    # Pulse-Point- repo; remove it then so only 6ixth Sense can use the GPU server.
     "https://pulse-point-steel.vercel.app",
     "http://localhost:5173",
     "http://localhost:4173",
