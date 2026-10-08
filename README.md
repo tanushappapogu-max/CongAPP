@@ -23,6 +23,7 @@ Object finding for blind and low-vision users, in the browser. Say or type what 
 - [Development](#development)
 - [Deployment](#deployment)
 - [Limitations](#limitations)
+- [Team](#team)
 - [Credits and license](#credits-and-license)
 
 ## How it works
@@ -288,6 +289,13 @@ These remain in the repository but aren't part of the main app path:
 - Some small items are still weak: headphones, sunglasses, chargers, door handles, smartwatches. Improving them will need vectors learned from labelled photos rather than text prompts.
 - Depth Anything was trained on normal-lens indoor images, so readings through the ultra-wide lens are somewhat less accurate.
 - iPhone browsers don't expose a reliable vibration API, and web pages can't access the iPhone's LiDAR.
+
+## Team
+
+- **Tanush Appapogu** ([@tanushappapogu-max](https://github.com/tanushappapogu-max))
+- **Ahaan Nigam** ([@AN00927](https://github.com/AN00927))
+- **Tejas Karusala** ([@tkarusala001](https://github.com/tkarusala001))
+- **Rishabh Patel** ([@rpatel-23](https://github.com/rpatel-23))
 
 ## Credits and license
 
