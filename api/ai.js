@@ -136,7 +136,7 @@ export default async function handler(req, res) {
         'content-type': 'application/json',
         // OpenRouter likes a referer for free-tier rate limit fairness
         'http-referer': origin || 'https://6ixthsense.vercel.app',
-        'x-title': 'Pulse Point',
+        'x-title': '6ixth Sense',
       },
       body: JSON.stringify(body),
     });

@@ -27,7 +27,7 @@ function detection(overrides = {}) {
   });
 }
 
-describe('pulsepoint core target and detection contracts', () => {
+describe('core target and detection contracts', () => {
   test('normalizes voice aliases into one target request', () => {
     expect(createTargetRequest(' Find my PHONE! ', 'voice')).toMatchObject({
       rawText: 'Find my PHONE!',
@@ -73,7 +73,7 @@ describe('pulsepoint core target and detection contracts', () => {
   });
 });
 
-describe('pulsepoint core tracking and guidance', () => {
+describe('core tracking and guidance', () => {
   test('tracker predicts movement and decays confidence for stale frames', () => {
     const tracker = new DetectionTracker();
     tracker.update(detection({ bbox: { x: 0.2, y: 0.4, width: 0.2, height: 0.2 } }), 1000);
@@ -91,7 +91,7 @@ describe('pulsepoint core tracking and guidance', () => {
   });
 });
 
-describe('pulsepoint core state machine', () => {
+describe('core state machine', () => {
   test('covers start, target, detection, miss, and reset', () => {
     let state = createInitialGuidanceState();
     state = guidanceReducer(state, { type: EVENTS.START, target: 'bottle' });

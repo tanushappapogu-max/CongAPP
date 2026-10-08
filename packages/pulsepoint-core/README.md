@@ -1,4 +1,4 @@
-# Pulse Point core
+# 6ixth Sense core
 
 This package contains platform-neutral target, detection, tracking, guidance,
 and state-machine logic. It intentionally has no React, camera, Expo, browser,
