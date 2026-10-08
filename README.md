@@ -1,15 +1,29 @@
 # 6ixth Sense
 
-**Live demo:** https://6ixthsense.vercel.app
-
 [![Tests](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml/badge.svg)](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-6ixth Sense (formerly Pulse Point) is a browser-based prototype that helps a blind or low-vision user find a named object with haptics and speech. You say or type what you're looking for ("my glasses", "keys", "a cup"); the camera finds it; the phone tells you which way to turn, then how far away it is, until you can reach it.
+Object finding for blind and low-vision users, in the browser. Say or type what you're looking for ("my glasses", "keys", "a cup"), point the phone around the room, and 6ixth Sense guides you to it with speech and vibration: which way to turn, how far away it is, and when it's within reach.
 
-The supported app is `pulse-point/` (React + Vite + ONNX Runtime Web). It is a prototype: it has not been validated for independent mobility, obstacle avoidance, or any safety-critical use.
+**Live:** https://6ixthsense.vercel.app
 
----
+> [!IMPORTANT]
+> This is a research prototype. It has not been validated for independent mobility, obstacle avoidance, or any safety-critical use. A "reach" cue means the object is probably close, not that it is safe to move toward or touch.
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Getting started](#getting-started)
+- [Repository layout](#repository-layout)
+- [Detection](#detection)
+- [Distance estimation](#distance-estimation)
+- [Vision server](#vision-server)
+- [iPhone notes](#iphone-notes)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Deployment](#deployment)
+- [Limitations](#limitations)
+- [Credits and license](#credits-and-license)
 
 ## How it works
 
@@ -17,202 +31,268 @@ The supported app is `pulse-point/` (React + Vite + ONNX Runtime Web). It is a p
 "find my glasses"
       │
       ▼
-Prompt pack lookup ── target vector + look-alike vectors (e.g. eyeglasses vs sunglasses)
+Target lookup ──── prompt pack: target vector + look-alikes (eyeglasses vs sunglasses)
       │
       ▼
-Detection ─────────── YOLOE (open vocabulary) · YOLO11n backup (80 COCO objects)
-      │                 runs on the vision server when one is configured, else on the phone
+Detection ──────── YOLOE (open vocabulary), YOLO11n as the COCO backup
+      │              on the vision server when available, otherwise on the phone
       ▼
-Box tracker ────────── smooths boxes between frames
+Tracking ───────── smooths boxes between frames
       │
       ▼
-Distance ───────────── Depth Anything V2 (meters, every ~1–4 s)
-      │                 + object width and the lens's field of view in between
+Distance ───────── Depth Anything V2 (meters, every ~1–4 s)
+      │              box width × lens field of view in between
       ▼
-Guidance ──────────── turn left/right · tilt up/down · closer · reach
+Guidance ───────── turn left/right · tilt up/down · closer · reach
       │
       ▼
-Haptics + speech
+Speech + haptics
 ```
 
-### Finding the object: YOLOE and the prompt pack
+The web app (`pulse-point/`) owns the camera, tracking, guidance, speech and haptics. Detection and depth run either on a small GPU-backed [vision server](#vision-server) or, if that's unreachable, on the device with ONNX Runtime Web.
 
-- **YOLOE** is an open-vocabulary detector: instead of a fixed class list it takes a *vector* describing what to look for. We export it to ONNX with that vector as a live input (`scripts/yoloe/export_promptable.py`).
-- **The prompt pack** (`pulse-point/public/prompts/pack.{json,bin}`, 226 KB) holds precomputed vectors for 113 items: 33 household items (glasses, keys, wallet, AirPods, pill bottle, white cane, door handle, …) plus the 80 COCO classes. It's our self-hosted vector database: served from our own site, loaded once, and searched on the phone with no API calls.
-- **Look-alikes:** each search scores the target against its look-alikes, so a box only counts as "eyeglasses" if it looks more like eyeglasses than sunglasses or a glasses case.
-- **Tuned vectors:** we tested every item on ~900 real photos. YOLOE ignores the plain names of some small objects (it sees watches as "clock"), so those items use a blend of the phrases it actually responds to. Watch went from 12% → 75% found, eyeglasses 12% → 62%, keys 0% → 50%. See `scripts/yoloe/pack_items.json` (`prompts` and `coco` fields).
-- **Aliases and typos:** "my glasses", "airpods", "medicine", "sofa", and close misspellings ("keyz") resolve to the right item (`pulse-point/src/detection/prompts.js`).
-- **YOLO11n backup:** lighter, but only knows the 80 COCO objects. Used on devices without WebGPU for COCO targets and if YOLOE fails to load.
+**Stack:** React 19, Vite 7, ONNX Runtime Web, Vitest. Vision server: FastAPI + ONNX Runtime, deployed on Modal.
 
-### How far away it is: Depth Anything + lens geometry
+## Getting started
 
-- **Depth Anything V2 Metric-Indoor-Small** returns distance in meters. It runs on the **largest centered square** of the frame (518 px) rather than the whole wide frame: on indoor photos that reads within ~2% of the full frame (after a fixed ×1/1.03 correction) at about **half the memory** (~280 MB peak vs ~550 MB), because the model compares every image patch with every other.
-- **Depth only runs for the last ~2 m.** Farther out, the user is still turning and walking, and the width estimate (below) is enough. On the on-device fallback, the depth model isn't even loaded until then.
-- **Small items (under 15 cm: AirPods, keys, glasses)** cover only a few of the depth model's patches until they're very close, so its reading blends in the table behind them and reads too far. For them, guidance uses whichever is nearer: the depth reading or the width estimate. Otherwise "reach" came far too late.
-- **Between depth readings**, distance follows the box size (twice as wide = half as far), so guidance updates every frame.
-- **The camera uses the widest back lens** (the 0.5× ultra-wide on iPhone) so the user finds the target without sweeping as far. The width-based distance math uses that lens's real field of view (~103° vs ~64° for the main camera; `lensFovDeg` in `pulse-point/src/lib/camera.js`) and the frame's long side, so it's right in portrait and landscape.
+Requirements: Node 20+, and Python 3.11+ if you want to run the vision server.
 
----
+```bash
+git clone https://github.com/tanushappapogu-max/CongAPP.git
+cd CongAPP
+./scripts/setup-git-hooks.sh     # commit-msg and pre-push hooks
 
-## The vision server (recommended for phones)
+cd pulse-point
+npm install
+npm run dev                      # serves on 0.0.0.0 so a phone on the same network can reach it
+```
 
-Running YOLOE and Depth Anything inside a phone browser is heavy. On an iPhone it repeatedly ran out of memory and Safari killed the tab (details below). The **vision server** (`server/vision/`) runs both models instead:
+Camera access needs a secure context. `localhost` works on the desktop; on a phone, open the dev server over HTTPS (for example through `cloudflared tunnel --url http://localhost:5173`) or use a Vercel preview.
 
-- **The phone** handles the camera, tracker, guidance, haptics and speech. It sends a ~35 KB JPEG per frame and gets boxes back (plus a distance about once a second). **No models are downloaded to the phone.**
-- **The server** uses the exact same model files and prompt pack as the app, so results match on-device detection.
-- **Fallback:** if the server is unreachable or a request fails, the app automatically switches to on-device detection.
-- **Measured locally:** ~79 ms per frame (~8 frames/s) end to end, with browser memory around 10–20 MB instead of hundreds.
+By default the app talks to the hosted vision server. Add `?server=off` to the URL to force on-device detection, or `?server=http://localhost:8788` to use a local one.
+
+## Repository layout
+
+```text
+pulse-point/              Web app (the supported client)
+  public/                 ONNX models, prompt pack, service worker, manifest
+  src/detection/          Detector selection, server client, prompt pack, depth, tracker
+  src/guidance/           Turn/tilt/reach logic, speech, haptics
+  src/lib/                Camera, URL flags, settings, voice input
+  src/scanner/            Scan session state
+  src/ui/                 Overlays and settings sheet
+packages/pulsepoint-core/ Shared target, tracking and guidance logic
+server/vision/            Vision server (YOLOE + Depth Anything over HTTP)
+scripts/yoloe/            YOLOE export and prompt pack build
+scripts/depth/            Depth Anything export
+server/                   Legacy experimental detector service (see below)
+api/                      Legacy OpenRouter proxy, unused by the app
+pulse-point-mobile/       Expo prototype with simulated sensing, not maintained
+```
+
+Files you'll touch most often:
+
+| File | Responsibility |
+|---|---|
+| `src/detection/engine.js` | Picks the detector (server, YOLOE, YOLO11n), captures frames, decodes boxes |
+| `src/detection/remote.js` | Vision server client and automatic fallback |
+| `src/detection/prompts.js` | Prompt pack loading, alias and typo matching, look-alike vectors |
+| `src/detection/depth.js`, `depth.worker.js`, `depthSample.js` | Depth on the server or in a worker, square crop, box sampling |
+| `src/detection/distance.js`, `src/guidance/compute.js` | Width-based distance and the turn/tilt/reach decisions |
+| `src/lib/camera.js` | Wide-lens selection and its field of view |
+| `src/lib/flags.js` | URL switches and Safari/iOS defaults |
+
+## Detection
+
+### YOLOE and the prompt pack
+
+YOLOE is an open-vocabulary detector. Instead of a fixed class list, it takes a vector describing what to look for. We export it to ONNX with that vector as a live input (`scripts/yoloe/export_promptable.py`), so one model covers every item.
+
+The prompt pack (`pulse-point/public/prompts/pack.{json,bin}`, 226 KB) holds precomputed vectors for 113 items: 33 household objects (glasses, keys, wallet, AirPods, pill bottle, white cane, door handle, and so on) plus the 80 COCO classes. It is served with the app, loaded once, and searched locally. There are no embedding API calls at runtime.
+
+Three things make it work better than plain class names:
+
+- **Look-alikes.** Each item lists confusable neighbours. A box only counts as "eyeglasses" if it scores higher for eyeglasses than for sunglasses or a glasses case.
+- **Tuned vectors.** We evaluated every item on roughly 900 real photos. YOLOE ignores the literal names of some small objects (it sees a wristwatch as "clock"), so those items use a blend of the phrases it does respond to:
+
+  | Item | Found, plain name | Found, tuned vector |
+  |---|---|---|
+  | Wristwatch | 12% | 75% |
+  | Eyeglasses | 12% | 62% |
+  | Keys | 0% | 50% |
+
+- **Aliases and typos.** "my glasses", "airpods", "medicine", "sofa" and near-misses like "keyz" resolve to the right item (`src/detection/prompts.js`).
+
+YOLO11n is kept as a backup. It's lighter but only knows the 80 COCO classes, so it's used for COCO targets on devices without WebGPU and whenever YOLOE fails to load.
+
+### Adding or changing an item
+
+1. Edit `scripts/yoloe/pack_items.json`. Each item has a `name`, `aliases`, `widthCm` (used for distance), `negatives` (look-alikes, which must also be items) and optionally `prompts` (phrases to blend instead of the name) and `coco` (the class YOLO11n should search for).
+2. Rebuild the pack: `scripts/yoloe/.venv/bin/python scripts/yoloe/build_prompt_pack.py`. The script writes `pack.json` and `pack.bin` into `pulse-point/public/prompts/`.
+3. If YOLOE is ever re-exported, rebuild the pack too. The vectors only match the checkpoint they came from.
+
+## Distance estimation
+
+Distance comes from two sources that cover for each other.
+
+**Depth Anything V2 (Metric-Indoor-Small)** gives a reading in meters. It runs on the largest centred square of the frame at 518 px rather than the full wide frame. On indoor photos that stays within about 2% of the full-frame result (after a fixed ×1/1.03 correction) and roughly halves peak memory, from ~550 MB to ~280 MB, because the model's attention compares every patch with every other.
+
+**Box width and lens geometry** fill the gaps between depth readings, so guidance updates every frame. If the box is twice as wide, the object is half as far. The math uses the field of view of the lens actually in use and the frame's long side, so it holds in portrait and landscape.
+
+How the two are combined:
+
+- Depth only runs within the last ~2 m. Farther out, the user is still turning and walking and width is good enough. In on-device mode the depth model isn't loaded until then.
+- For small items under 15 cm (AirPods, keys, glasses), the object covers only a few depth patches until it's very close, so the reading picks up the table behind it and reports too far. For these, guidance uses whichever estimate is nearer. Without this, "reach" arrived far too late.
+- The camera opens the widest back lens available (the 0.5× ultra-wide on iPhone), so users find the target with less sweeping. That lens is ~103° wide versus ~64° for the main camera (`lensFovDeg` in `src/lib/camera.js`).
+
+## Vision server
+
+Running YOLOE and Depth Anything inside a phone browser is heavy enough that iPhone Safari repeatedly killed the tab (see [iPhone notes](#iphone-notes)). The vision server in `server/vision/` runs both models instead.
+
+- The phone sends a ~35 KB JPEG per frame and gets boxes back, plus a distance about once a second. No models are downloaded to the phone.
+- The server loads the same model files and prompt pack as the app, so results match on-device detection.
+- If the server is unreachable or a request fails, the app switches to on-device detection without user action.
+- Measured locally: ~79 ms per frame end to end (~8 fps), with browser memory around 10–20 MB instead of several hundred.
 
 | Endpoint | Input | Output |
 |---|---|---|
-| `GET /health` | | `{"ok": true, "device": "CUDAExecutionProvider" or "CPUExecutionProvider"}` |
-| `POST /v1/detect` | `file` = 640×640 letterboxed JPEG, `target` = prompt-pack item name | `{"detections": [{class, score, bbox}], "ms"}` |
-| `POST /v1/depth` | `file` = centered square crop JPEG, `box` = `x,y,w,h` (crop fractions) | `{"meters", "ms"}` |
+| `GET /health` | | `{"ok": true, "device": "CUDAExecutionProvider" \| "CPUExecutionProvider"}` |
+| `POST /v1/detect` | `file`: 640×640 letterboxed JPEG; `target`: prompt pack item name | `{"detections": [{class, score, bbox}], "ms"}` |
+| `POST /v1/depth` | `file`: centred square crop JPEG; `box`: `x,y,w,h` as crop fractions | `{"meters", "ms"}` |
 
-The server restricts CORS to the app's origins (`server/contract.py`), rate-limits per IP, and caps image size.
+CORS is limited to the app's origins (`server/contract.py`), requests are rate-limited per IP, and image size is capped.
 
-> **Privacy:** with a vision server configured, camera frames and the target name are sent to it while scanning. The server doesn't store them, but they do leave the phone.
+> [!NOTE]
+> With a vision server in use, camera frames and the target name leave the phone while scanning. The server doesn't store them.
 
-### Where to run it
+### Hosting options
 
-| Option | Cost | Notes |
+| Option | Cost | Trade-offs |
 |---|---|---|
-| **Modal** (T4 GPU), `server/vision/modal_vision.py` | Free within Modal's $30/month credit | Fastest. Sleeps after ~5 idle minutes; the first request after that takes ~10–30 s while it wakes (the app wakes it when the page opens). |
-| **Your own computer + Cloudflare Tunnel** | Free, no account | Good for testing on a phone today. Only works while your computer is on; the tunnel link changes each run. |
-| **Hugging Face Spaces** (free CPU) | Free | Always-available link, but no GPU (slower depth) and it sleeps after ~2 days unused. |
+| Modal, T4 GPU (`server/vision/modal_vision.py`) | Covered by Modal's $30/month free credit | Fastest. Scales to zero after ~5 idle minutes; the first request after that takes 10–30 s. The app sends a wake-up request when the page opens. |
+| Your machine + Cloudflare Tunnel | Free, no account | Good for phone testing. Only up while your machine is on, and the URL changes each run. |
+| Hugging Face Spaces, free CPU | Free | Stable URL, but no GPU (slower depth) and it sleeps after ~2 days without traffic. |
 
-**Run it locally:**
+### Running it yourself
+
+Locally:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r server/vision/requirements.txt
 cd server/vision && ../../.venv/bin/uvicorn vision_app:app --port 8788
 ```
 
-Then open the app with `?server=http://localhost:8788`.
+Open the app with `?server=http://localhost:8788`.
 
-**Test on a phone without deploying** (your computer runs the server; `cloudflared` gives it an https link):
+On a phone, without deploying anything:
 
 ```bash
 brew install cloudflared
 cloudflared tunnel --url http://localhost:8788
 ```
 
-Open `https://6ixthsense.vercel.app/?server=<the trycloudflare.com link>` on the phone.
+Then open `https://6ixthsense.vercel.app/?server=<trycloudflare.com URL>` on the phone.
 
-**Deploy to Modal:**
+On Modal:
 
 ```bash
 pip install modal
-python3 -m modal setup                          # one-time browser login
+python3 -m modal setup                          # one-time login
 modal deploy server/vision/modal_vision.py      # prints the server URL
 ```
 
-Set the printed URL as `VITE_VISION_URL` in Vercel (see below) and redeploy the site.
+Set the printed URL as `VITE_VISION_URL` in Vercel and redeploy.
 
----
+## iPhone notes
 
-## What we learned about iPhone (why the server exists)
+The vision server exists because of what we found profiling iPhone Safari with Web Inspector memory recordings and the URL switches below:
 
-We diagnosed the iPhone crashes with Safari Web Inspector memory recordings and URL switches that turn parts of the app on and off:
+1. **WebGPU leaked memory** at ~150 MB/s while scanning, and the tab was killed within ~20 s. On-device inference now uses the CPU on every iOS browser (they all run WebKit) and on desktop Safari. `?gpu=1` turns WebGPU back on for testing.
+2. **Detection alone on the CPU was stable; detection plus depth was not.** The depth model is 27 MB on disk but peaked at ~550 MB on a wide frame. The square crop halves that.
+3. **Multi-threaded inference** via COOP/COEP made detection 3.5× faster (178 → 51 ms/frame) but crashed Safari whenever depth also ran. The site is deliberately not cross-origin isolated.
+4. **Recreating the depth worker after each reading** to release memory also crashed Safari, so one worker stays alive for the session.
 
-1. **Safari's WebGPU path leaked memory** (~150 MB/s while scanning; the tab was killed in ~20 s). On-device detection now uses the CPU on every iPhone browser (they all run Safari's engine) and desktop Safari. `?gpu=1` re-enables WebGPU for testing.
-2. **Detection alone on the CPU was stable; detection + Depth Anything wasn't.** Depth Anything's file is 27 MB but it peaks at ~550 MB while running on a wide frame. The centered square crop halves that.
-3. **Multi-threaded CPU inference** (COOP/COEP headers) made detection 3.5× faster (178 → 51 ms/frame) but crashed iPhone Safari whenever depth also ran, so the site is not cross-origin isolated.
-4. **Closing and reopening the depth worker after every reading** to free memory also crashed Safari, so one worker stays alive.
+The on-device path remains as the offline fallback.
 
-The vision server sidesteps all of this. The on-device path remains as the offline fallback.
-
----
-
-## URL switches (testing and diagnosis)
-
-Add these to the URL, e.g. `https://6ixthsense.vercel.app/?debug=1&nodepth=1`.
-
-| Switch | Effect |
-|---|---|
-| `?debug=1` | Shows a readout: server status, which detector/backend is running, depth backend, thread count, frame time, best score for the target, memory |
-| `?server=URL` | Use this vision server; `?server=off` forces on-device detection |
-| `?nodepth=1` | No depth model |
-| `?cpu=1` / `?gpu=1` | Force CPU / force WebGPU for on-device inference |
-| `?threads=N` | Force the CPU backend's thread count |
-| `?depthsize=392` | Smaller depth crop (~200 MB peak, slightly noisier, corrected ×1/1.15) |
-| `?nodetect=1` | Camera and overlay only; no detection model is loaded or run |
-| `?captureonly=1` | Load the detector and copy each frame into its input, but never run it |
-
----
-
-## Projects
-
-### Web app (`pulse-point/`), the supported app
-
-```bash
-cd pulse-point
-npm install
-npm run dev        # development server
-npm test           # unit tests
-npm run build      # production build
-```
-
-Key files:
-
-| File | What it does |
-|---|---|
-| `src/detection/engine.js` | Detector selection (server / YOLOE / YOLO11n), frame capture, box decoding |
-| `src/detection/remote.js` | Vision server client and fallback |
-| `src/detection/prompts.js` | Prompt pack loading, alias/typo matching, target + look-alike vectors |
-| `src/detection/depth.js`, `depth.worker.js`, `depthSample.js` | Depth Anything (server or on-device worker), square crop, box sampling |
-| `src/detection/distance.js`, `src/guidance/compute.js` | Width/FOV distance and turn/tilt/reach guidance |
-| `src/lib/camera.js` | Wide-lens selection and field of view |
-| `src/lib/flags.js` | URL switches and the Safari/iOS defaults |
-
-### Model and data scripts (`scripts/`)
-
-| Script | What it does |
-|---|---|
-| `scripts/yoloe/export_promptable.py` | Exports YOLOE-11s to ONNX with prompt vectors as a live input |
-| `scripts/yoloe/build_prompt_pack.py` | Builds the prompt pack from `scripts/yoloe/pack_items.json` (rebuild whenever the model is re-exported) |
-| `scripts/depth/export_depth.py` | Exports Depth Anything V2 Metric-Indoor-Small (fp16 for WebGPU, uint8 for CPU) |
-
-### Mobile app (`pulse-point-mobile/`): exploratory, degraded prototype
-
-> [!NOTE]
-> `pulse-point-mobile/` is an exploratory prototype for mobile UX concepts with simulated sensing. It is **not** the supported client. Don't port web changes to it unless specifically asked.
-
-### Legacy services
-
-- `server/` (outside `server/vision/`) is the older experimental Python service (LocateAnything-3B, an ImageNet/Grad-CAM classifier, and an unrelated tea-text classifier), deployed by `server/modal_app.py`. The web app only calls it when `VITE_SERVER_URL` is set. See [`server/README.md`](server/README.md).
-- `api/ai.js` is a legacy OpenRouter proxy that the web app no longer calls.
-
----
-
-## Deploying the web app (Vercel)
-
-Import the repo into Vercel and keep the repository root as the root directory. `vercel.json` builds `pulse-point/` and publishes `pulse-point/dist`.
+## Configuration
 
 ### Environment variables
 
-| Variable | Description |
-|---|---|
-| `VITE_VISION_URL` | Overrides the vision server URL (defaults to the Modal deployment, `https://tanush-appapogu--pulse-point-vision-fast.us-east.modal.direct`). When healthy, detection and depth run there and frames are uploaded while scanning. Vite exposes `VITE_*` values to the browser, so this must not contain a secret. |
-| `VITE_SERVER_URL` | Optional URL for the legacy LocateAnything server. When healthy, it is queried about every 2.5 s while scanning. |
-| `OPENROUTER_API_KEY` | Only for the legacy `/api/ai` proxy, which the app doesn't call. Never prefix a secret with `VITE_`. |
-| `ALLOWED_ORIGIN` | Optional origin for the legacy `/api/ai` proxy (defaults to `https://6ixthsense.vercel.app`). |
+Set these in Vercel (or `pulse-point/.env.local` for local builds). Vite exposes every `VITE_*` value to the browser, so none of them may hold a secret.
 
----
+| Variable | Purpose |
+|---|---|
+| `VITE_VISION_URL` | Vision server URL. Defaults to the Modal deployment, `https://tanush-appapogu--pulse-point-vision-fast.us-east.modal.direct`. |
+| `VITE_SERVER_URL` | Optional legacy LocateAnything server. When healthy, it's queried about every 2.5 s while scanning. |
+| `OPENROUTER_API_KEY` | Server-side key for the legacy `/api/ai` proxy only. The app doesn't call it. |
+| `ALLOWED_ORIGIN` | Origin allowed by the legacy `/api/ai` proxy. Defaults to `https://6ixthsense.vercel.app`. |
+
+### URL switches
+
+For testing and diagnosis. Combine them, e.g. `https://6ixthsense.vercel.app/?debug=1&nodepth=1`.
+
+| Switch | Effect |
+|---|---|
+| `?debug=1` | On-screen readout: server status, active detector and backend, depth backend, thread count, frame time, best target score, memory |
+| `?server=URL` | Use this vision server. `?server=off` forces on-device detection. |
+| `?nodepth=1` | Disable the depth model |
+| `?cpu=1`, `?gpu=1` | Force CPU or WebGPU for on-device inference |
+| `?threads=N` | Force the CPU backend's thread count |
+| `?depthsize=392` | Smaller depth crop: ~200 MB peak, slightly noisier, corrected ×1/1.15 |
+| `?nodetect=1` | Camera and overlay only; no detector is loaded |
+| `?captureonly=1` | Load the detector and fill its input each frame, but never run it |
+
+## Development
+
+```bash
+cd pulse-point
+npm test              # unit tests (Vitest)
+npm run test:watch
+npm run build         # production build into pulse-point/dist
+npm run preview       # serve the production build
+```
+
+CI (`.github/workflows/test.yml`) runs on every push to `main` and every pull request: web and shared-core tests, a production build, a syntax check of `api/ai.js`, and the server contract tests (`python -m unittest discover -s server -p "test_contract.py"`).
+
+Model exports, for when weights change:
+
+| Script | Output |
+|---|---|
+| `scripts/yoloe/export_promptable.py` | YOLOE-11s ONNX with the prompt vector as an input |
+| `scripts/yoloe/build_prompt_pack.py` | `pack.json` and `pack.bin` from `pack_items.json` |
+| `scripts/depth/export_depth.py` | Depth Anything V2 Metric-Indoor-Small, fp16 (WebGPU) and uint8 (CPU) |
+
+Each script directory has its own `requirements.txt`.
+
+Branching, commit format and review process are in [CONTRIBUTING.md](CONTRIBUTING.md). Commit messages are checked by the hooks installed with `scripts/setup-git-hooks.sh`; see [COMMIT_POLICY.md](COMMIT_POLICY.md).
+
+Further reading: [ARCHITECTURE.md](ARCHITECTURE.md) for data flow and module boundaries, [TECHNICAL_OVERVIEW.md](TECHNICAL_OVERVIEW.md) for implementation detail, [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Deployment
+
+The web app deploys to Vercel from the repository root. `vercel.json` installs and builds `pulse-point/`, publishes `pulse-point/dist`, sets long-lived caching on hashed assets, and restricts camera and microphone permissions to the site's own origin.
+
+The vision server deploys separately to Modal (see [Running it yourself](#running-it-yourself)).
+
+### Legacy components
+
+These remain in the repository but aren't part of the main app path:
+
+- `server/` (outside `server/vision/`): the earlier experimental detector (LocateAnything-3B, an ImageNet/Grad-CAM classifier, and an unrelated tea-text classifier), deployed with `server/modal_app.py`. Only used when `VITE_SERVER_URL` is set. Details in [server/README.md](server/README.md).
+- `api/ai.js`: an OpenRouter proxy the app no longer calls.
+- `pulse-point-mobile/`: an Expo prototype for mobile UX ideas with simulated sensing. It is not the supported client and doesn't receive web changes.
 
 ## Limitations
 
-- Prototype only: no obstacle detection, room mapping or route planning, and nothing establishes that moving or reaching is safe.
-- Some small household items are still weak (headphones, sunglasses, chargers, door handles, smartwatches); improving them needs vectors learned from labeled photos.
-- Depth Anything was trained on normal-lens indoor photos, so readings on the ultra-wide lens are somewhat less exact.
-- iPhone browsers don't expose reliable vibration APIs, and websites can't access the iPhone's LiDAR.
+- No obstacle detection, room mapping or route planning. Nothing in the app establishes that moving or reaching is safe.
+- Some small items are still weak: headphones, sunglasses, chargers, door handles, smartwatches. Improving them will need vectors learned from labelled photos rather than text prompts.
+- Depth Anything was trained on normal-lens indoor images, so readings through the ultra-wide lens are somewhat less accurate.
+- iPhone browsers don't expose a reliable vibration API, and web pages can't access the iPhone's LiDAR.
 
----
+## Credits and license
 
-## Acknowledgments and licenses
+- [YOLOE](https://github.com/THU-MIG/yoloe) (YOLOE-11s via [Ultralytics](https://github.com/ultralytics/ultralytics)) and [Ultralytics YOLO11n](https://github.com/ultralytics/ultralytics), AGPL-3.0. Because these weights are AGPL-3.0, the deployed app's source must remain public.
+- [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) Metric-Indoor-Small, fine-tuned by its authors from the Apache-2.0 Small model on Hypersim. Its model card states no separate license.
+- [MobileCLIP](https://github.com/apple/ml-mobileclip) text encoder (offline, to build the prompt pack), [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html), [FastAPI](https://fastapi.tiangolo.com/).
 
-- [YOLOE](https://github.com/THU-MIG/yoloe) (YOLOE-11s via [Ultralytics](https://github.com/ultralytics/ultralytics)) and [Ultralytics YOLO11n](https://github.com/ultralytics/ultralytics): AGPL-3.0. Because these weights are AGPL-3.0, the deployed app's source must stay public.
-- [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) Metric-Indoor-Small: fine-tuned by its authors from the Apache-2.0 Small model on the Hypersim dataset; its model card states no separate license.
-- [MobileCLIP](https://github.com/apple/ml-mobileclip) text encoder (used offline to build the prompt pack), [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html), [FastAPI](https://fastapi.tiangolo.com/).
-
-6ixth Sense application code is licensed under the MIT License; see [LICENSE](LICENSE).
+6ixth Sense application code is released under the [MIT License](LICENSE). The project was previously named Pulse Point, which is why some directories and packages still use that name.
