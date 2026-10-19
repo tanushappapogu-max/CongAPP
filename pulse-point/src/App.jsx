@@ -173,7 +173,7 @@ export default function App() {
       const label = localTargetRef.current?.label;
       const best = label ? Math.max(0, ...lastPredsRef.current.filter(p => p.class === label).map(p => p.score)) : null;
       const heap = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null;
-      setDebugInfo({ ...getDetectorInfo(), depth: getDepthBackend(), avgMs, label, best, heap, lastError });
+      setDebugInfo({ ...getDetectorInfo(), depth: getDepthBackend(), avgMs, label, best, heap, lastError, speech: speakerRef.current.status() });
     }, 500);
     return () => {
       clearInterval(id);
@@ -235,6 +235,17 @@ export default function App() {
     else setStatus('looking');
   }
 
+  function handleSettingsChange(next) {
+    if (next.speech && !settingsRef.current.speech) {
+      // Confirm inside the toggle tap so it also unlocks speech on iOS.
+      const speaker = speakerRef.current;
+      speaker.setEnabled(true);
+      speaker.setRate(next.speechRate);
+      speaker.prime('Voice guidance on.');
+    }
+    setSettings(next);
+  }
+
   function handleScanClick() {
     if (isRunningRef.current) { stopScanner(); return; }
     if (draftTarget.trim()) { submitTypedTarget(); return; }
@@ -252,6 +263,7 @@ export default function App() {
     }
     setError('');
     setIsListening(true);
+    speakerRef.current.prime();
     if (hapticsRef.current.isAvailable()) navigator.vibrate?.([80]);
     startListening({
       onResult: handleVoice,
@@ -300,6 +312,8 @@ export default function App() {
 
   function startScanner(startTarget = targetRef.current) {
     if (isRunningRef.current) return;
+    // Must run synchronously inside the tap, before any await, or iOS keeps speech locked.
+    speakerRef.current.prime('Starting.');
     const requestedTarget = typeof startTarget === 'string' ? startTarget.trim() : targetRef.current;
     void sessionRef.current?.start(requestedTarget);
   }
@@ -801,7 +815,8 @@ export default function App() {
         <pre className="debug-readout" aria-hidden="true">
           {`server ${debugInfo.server ?? '-'} · yoloe ${debugInfo.yoloe ?? '-'} · yolo ${debugInfo.yolo ?? '-'} · depth ${debugInfo.depth ?? '-'} · threads ${debugInfo.threads ?? '-'}
 frame ${debugInfo.avgMs ?? '-'} ms · target ${debugInfo.label ?? '-'} · best ${debugInfo.best == null ? '-' : debugInfo.best.toFixed(2)}
-heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
+heap ${debugInfo.heap ?? '-'} MB
+speech ${debugInfo.speech.enabled ? 'on' : 'off'} · primed ${debugInfo.speech.primed ? 'y' : 'n'} · voices ${debugInfo.speech.voices} (${debugInfo.speech.voice}) · ${debugInfo.speech.speaking ? 'speaking' : debugInfo.speech.pending ? 'pending' : 'idle'}${debugInfo.speech.lastError ? ` · err ${debugInfo.speech.lastError}` : ''}${debugInfo.lastError ? `\nerr ${debugInfo.lastError}` : ''}`}
         </pre>
       )}
 
@@ -875,9 +890,10 @@ heap ${debugInfo.heap ?? '-'} MB${debugInfo.lastError ? `\nerr ${debugInfo.lastE
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
-        onChange={setSettings}
+        onChange={handleSettingsChange}
         hapticsAvailable={hapticsAvail}
         speechAvailable={speechAvail}
+        onTestVoice={() => speakerRef.current.prime('Voice guidance is working.')}
       />
       </main>
     </>

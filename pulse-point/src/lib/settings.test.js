@@ -81,3 +81,23 @@ describe('updateSetting', () => {
     expect(loadSettings().haptics).toBe(false);
   });
 });
+
+describe('speech default migration', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('speech is on by default', () => {
+    expect(DEFAULT_SETTINGS.speech).toBe(true);
+  });
+
+  test('ignores a stored speech:false the user never chose', () => {
+    localStorage.setItem('pulsepoint:settings:v1', JSON.stringify({ speech: false, haptics: false }));
+    const s = loadSettings();
+    expect(s.speech).toBe(true);
+    expect(s.haptics).toBe(false);
+  });
+
+  test('honours speech:false once the user has toggled it', () => {
+    localStorage.setItem('pulsepoint:settings:v1', JSON.stringify({ speech: false, speechChosen: true }));
+    expect(loadSettings().speech).toBe(false);
+  });
+});

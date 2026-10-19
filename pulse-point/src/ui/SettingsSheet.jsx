@@ -12,6 +12,7 @@ export default function SettingsSheet({
   onChange,
   hapticsAvailable,
   speechAvailable,
+  onTestVoice,
 }) {
   const closeBtnRef = useRef(null);
   const sheetRef = useRef(null);
@@ -97,7 +98,7 @@ export default function SettingsSheet({
             hint={speechAvailable ? 'Reads turn directions and distance aloud.' : 'Not supported on this device.'}
             checked={settings.speech && speechAvailable}
             disabled={!speechAvailable}
-            onChange={v => set('speech', v)}
+            onChange={v => onChange({ ...settings, speech: v, speechChosen: true })}
           />
 
           {settings.speech && speechAvailable && (
@@ -115,6 +116,15 @@ export default function SettingsSheet({
               <span className="settings-row-value" aria-live="polite">
                 {settings.speechRate.toFixed(2)}×
               </span>
+            </div>
+          )}
+
+          {settings.speech && speechAvailable && onTestVoice && (
+            <div className="settings-row">
+              <span className="settings-row-label" style={{ flex: 1 }}>Test voice</span>
+              <button type="button" className="settings-seg active" onClick={onTestVoice}>
+                Play
+              </button>
             </div>
           )}
 

@@ -7,7 +7,7 @@ export const SENSITIVITY_LEVELS = ['gentle', 'medium', 'sharp'];
 
 export const DEFAULT_SETTINGS = Object.freeze({
   haptics: true,
-  speech: false,            // off by default — user opts in (autoplay-policy friendly)
+  speech: true,             // on by default; Speaker.prime() unlocks it on the first tap
   speechRate: 1.15,
   sensitivity: 'medium',    // affects haptic gap + closer threshold
   showAllBoxes: true,       // draw non-target predictions faintly
@@ -18,6 +18,10 @@ export function loadSettings() {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY) : null;
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw);
+    // Speech used to default to off and the defaults were persisted on first
+    // launch, so a stored `speech: false` usually isn't a real choice. Only
+    // honour it once the user has actually flipped the toggle.
+    if (parsed && !parsed.speechChosen) delete parsed.speech;
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return { ...DEFAULT_SETTINGS };
