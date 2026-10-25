@@ -1,4 +1,4 @@
-"""6ixth Sense vision server: runs YOLOE detection and Depth Anything for the phone.
+"""6ixthSense vision server: runs YOLOE detection and Depth Anything for the phone.
 
 The phone keeps the camera, tracker, guidance, haptics and speech; it sends a small JPEG here and
 gets boxes (and, every couple of seconds, a distance) back. It uses the exact model files and
@@ -33,7 +33,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from contract import cors_origins  # noqa: E402
 
-ASSETS = Path(os.getenv("PULSEPOINT_ASSETS", HERE.parent.parent / "pulse-point" / "public"))
+ASSETS = Path(os.getenv("PULSEPOINT_ASSETS", HERE.parent.parent / "6ixthsense" / "public"))
 INPUT = 640
 CONF_THRESH = 0.25
 IOU_THRESH = 0.45
@@ -46,7 +46,7 @@ RATE_LIMIT_PER_MIN = 900  # ~15 req/s per IP covers one phone scanning at full s
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
 
-app = FastAPI(title="6ixth Sense Vision")
+app = FastAPI(title="6ixthSense Vision")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),

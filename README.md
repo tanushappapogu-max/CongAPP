@@ -1,14 +1,14 @@
-# 6ixth Sense
+# 6ixthSense
 
 [![Tests](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml/badge.svg)](https://github.com/tanushappapogu-max/CongAPP/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Browser-based object finding for blind and low-vision users.** Say or type what you're looking for ("my glasses", "keys", "a cup") and sweep the phone around the room. 6ixth Sense guides you to it with speech and vibration: which way to turn, how far away the object is, and when it's within reach.
+**Browser-based object finding for blind and low-vision users.** Say or type what you're looking for ("my glasses", "keys", "a cup") and sweep the phone around the room. 6ixthSense guides you to it with speech and vibration: which way to turn, how far away the object is, and when it's within reach.
 
 **Live demo:** https://6ixthsense.vercel.app
 
 > [!IMPORTANT]
-> 6ixth Sense is a research prototype. It has not been validated for independent mobility, obstacle avoidance, or any safety-critical use. A "reach" cue means the object is probably close, not that it is safe to move toward or touch.
+> 6ixthSense is a research prototype. It has not been validated for independent mobility, obstacle avoidance, or any safety-critical use. A "reach" cue means the object is probably close, not that it is safe to move toward or touch.
 
 ## Highlights
 
@@ -59,7 +59,7 @@ Guidance ───────── turn left/right · tilt up/down · closer �
 Speech + haptics
 ```
 
-The web app (`pulse-point/`) owns the camera, tracking, guidance, speech and haptics. Detection and depth run on a GPU-backed [vision server](#vision-server) when it's available, and otherwise on the device with ONNX Runtime Web.
+The web app (`6ixthsense/`) owns the camera, tracking, guidance, speech and haptics. Detection and depth run on a GPU-backed [vision server](#vision-server) when it's available, and otherwise on the device with ONNX Runtime Web.
 
 | Layer | Technology |
 |---|---|
@@ -111,7 +111,7 @@ git clone https://github.com/tanushappapogu-max/CongAPP.git
 cd CongAPP
 ./scripts/setup-git-hooks.sh     # commit-msg and pre-push hooks
 
-cd pulse-point
+cd 6ixthsense
 npm install
 npm run dev                      # serves on 0.0.0.0 so a phone on the same network can reach it
 ```
@@ -123,23 +123,23 @@ By default the app uses the hosted vision server. Add `?server=off` to force on-
 ## Repository layout
 
 ```text
-pulse-point/              Web app (the supported client)
+6ixthsense/              Web app (the supported client)
   public/                 ONNX models, prompt pack, service worker, manifest
   src/detection/          Detector selection, server client, prompt pack, depth, tracker
   src/guidance/           Turn/tilt/reach logic, speech, haptics
   src/lib/                Camera, URL flags, settings, voice input
   src/scanner/            Scan session state
   src/ui/                 Overlays and settings sheet
-packages/pulsepoint-core/ Shared target, tracking and guidance logic
+packages/6ixthsense-core/ Shared target, tracking and guidance logic
 server/vision/            Vision server (YOLOE + Depth Anything over HTTP)
 scripts/yoloe/            YOLOE export and prompt pack build
 scripts/depth/            Depth Anything export
 server/                   Legacy experimental detector service (see Legacy components)
 api/                      Legacy OpenRouter proxy, unused by the app
-pulse-point-mobile/       Expo prototype with simulated sensing, not maintained
+6ixthsense-mobile/       Expo prototype with simulated sensing, not maintained
 ```
 
-Key modules, relative to `pulse-point/`:
+Key modules, relative to `6ixthsense/`:
 
 | File | Responsibility |
 |---|---|
@@ -157,7 +157,7 @@ Key modules, relative to `pulse-point/`:
 
 YOLOE is an open-vocabulary detector. Instead of a fixed class list, it takes a vector describing what to look for. The export script (`scripts/yoloe/export_promptable.py`) keeps that vector as a live ONNX input, so a single model covers every item.
 
-The prompt pack (`pulse-point/public/prompts/pack.{json,bin}`, 226 KB) holds precomputed 512-dimensional vectors for 113 items: 33 household objects (glasses, keys, wallet, AirPods, pill bottle, white cane, door handle, and so on) plus the 80 COCO classes. It ships with the app, loads once, and is searched locally.
+The prompt pack (`6ixthsense/public/prompts/pack.{json,bin}`, 226 KB) holds precomputed 512-dimensional vectors for 113 items: 33 household objects (glasses, keys, wallet, AirPods, pill bottle, white cane, door handle, and so on) plus the 80 COCO classes. It ships with the app, loads once, and is searched locally.
 
 Plain class names alone work poorly for many items. Three mechanisms make up for that:
 
@@ -174,7 +174,7 @@ Plain class names alone work poorly for many items. Three mechanisms make up for
    ```bash
    scripts/yoloe/.venv/bin/python scripts/yoloe/build_prompt_pack.py
    ```
-   This writes `pack.json` and `pack.bin` into `pulse-point/public/prompts/`.
+   This writes `pack.json` and `pack.bin` into `6ixthsense/public/prompts/`.
 3. If YOLOE is ever re-exported, rebuild the pack as well. Vectors only match the checkpoint they were built from (`pack.json` records its SHA-256).
 
 ## Distance estimation
@@ -265,7 +265,7 @@ The on-device path remains as the offline fallback.
 
 ### Environment variables
 
-Set these in Vercel, or in `pulse-point/.env.local` for local builds.
+Set these in Vercel, or in `6ixthsense/.env.local` for local builds.
 
 > [!WARNING]
 > Vite exposes every `VITE_*` value to the browser. Never put a secret in one.
@@ -295,10 +295,10 @@ These are for testing and diagnosis, and they can be combined, e.g. `https://6ix
 ## Development
 
 ```bash
-cd pulse-point
+cd 6ixthsense
 npm test              # unit tests (Vitest)
 npm run test:watch
-npm run build         # production build into pulse-point/dist
+npm run build         # production build into 6ixthsense/dist
 npm run preview       # serve the production build
 ```
 
@@ -322,7 +322,7 @@ npm run preview       # serve the production build
 
 ## Deployment
 
-The web app deploys to **Vercel** from the repository root. `vercel.json` installs and builds `pulse-point/` and publishes `pulse-point/dist`. It also sets long-lived caching on hashed assets and restricts camera and microphone permissions to the site's own origin.
+The web app deploys to **Vercel** from the repository root. `vercel.json` installs and builds `6ixthsense/` and publishes `6ixthsense/dist`. It also sets long-lived caching on hashed assets and restricts camera and microphone permissions to the site's own origin.
 
 The vision server deploys separately to **Modal** (see [Running it yourself](#running-it-yourself)).
 
@@ -332,7 +332,7 @@ These remain in the repository but are not part of the main app path:
 
 - **`server/`** (outside `server/vision/`): the earlier experimental detector, deployed with `server/modal_app.py`. It contains LocateAnything-3B, an ImageNet/Grad-CAM classifier and an unrelated tea-text classifier. It's used only when `VITE_SERVER_URL` is set. See [server/README.md](server/README.md).
 - **`api/ai.js`:** an OpenRouter proxy that the app no longer calls.
-- **`pulse-point-mobile/`:** an Expo prototype for mobile UX ideas, with simulated sensing. It is not the supported client and doesn't receive changes made to the web app.
+- **`6ixthsense-mobile/`:** an Expo prototype for mobile UX ideas, with simulated sensing. It is not the supported client and doesn't receive changes made to the web app.
 
 ## Limitations
 
@@ -359,4 +359,4 @@ These remain in the repository but are not part of the main app path:
 | [MobileCLIP](https://github.com/apple/ml-mobileclip) text encoder | Used offline only, to build the prompt pack |
 | [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript.html), [FastAPI](https://fastapi.tiangolo.com/) | Runtime and server frameworks |
 
-The 6ixth Sense application code is released under the [MIT License](LICENSE). The project was previously named Pulse Point, which is why some directories and packages still use that name.
+The 6ixthSense application code is released under the [MIT License](LICENSE).

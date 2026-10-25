@@ -1,6 +1,6 @@
 {
-  "name": "6ixth Sense",
-  "short_name": "6ixth Sense",
+  "name": "6ixthSense",
+  "short_name": "6ixthSense",
   "description": "A haptic-first assistive interface that helps blind and low-vision users locate nearby objects.",
   "start_url": "/",
   "scope": "/",

@@ -1,5 +1,5 @@
 """
-LocateAnything-3B inference wrapper for Pulse Point.
+LocateAnything-3B inference wrapper for 6ixthSense.
 
 nvidia/LocateAnything-3B is a Qwen2.5-VL-based visual grounding model.
 Given an image + natural-language query it returns bounding boxes for
@@ -144,7 +144,7 @@ def locate_object(image_bytes: bytes, target: str) -> dict | None:
     """
     Run LocateAnything-3B to locate `target` in the given image.
 
-    Returns a Pulse Point detection dict or None if nothing found / unavailable.
+    Returns a 6ixthSense detection dict or None if nothing found / unavailable.
     """
     _ensure_loaded()
     if not _load_ok:

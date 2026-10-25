@@ -2,7 +2,7 @@ import {
   createInitialGuidanceState,
   EVENTS,
   guidanceReducer,
-} from '../../../packages/pulsepoint-core/src/index.js';
+} from '../../../packages/6ixthsense-core/src/index.js';
 
 export { createInitialGuidanceState, EVENTS };
 

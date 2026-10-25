@@ -24,22 +24,22 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: pulse-point/package-lock.json
+          cache-dependency-path: 6ixthsense/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: pulse-point
+        working-directory: 6ixthsense
 
       - name: Build
         run: npm run build
-        working-directory: pulse-point
+        working-directory: 6ixthsense
         env:
           # No AI keys needed — AI fallback removed
           NODE_ENV: production
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pulse-point/dist
+          path: 6ixthsense/dist
 
   deploy:
     needs: build

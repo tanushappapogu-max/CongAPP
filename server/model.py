@@ -1,5 +1,5 @@
 """
-PulsePointNet — Experimental ImageNet Classifier with Debug Localization
+SixthSenseNet — Experimental ImageNet Classifier with Debug Localization
 
 Architecture combines several state-of-the-art components:
   - MobileNetV3 backbone with compound scaling (Tan & Le, 2019)
@@ -393,14 +393,14 @@ class AttentionHeatmapGenerator(nn.Module):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# §8  PulsePointNet — FULL ARCHITECTURE ASSEMBLY
+# §8  SixthSenseNet — FULL ARCHITECTURE ASSEMBLY
 #
 #     Backbone (MobileNetV3) → Multi-scale feature extraction →
 #     SE-augmented residual refinement → Spatial Pyramid Pooling →
 #     Feature Pyramid Network → Detection Head + Attention Heatmap
 # ═══════════════════════════════════════════════════════════════════════════
 
-class PulsePointNet(nn.Module):
+class SixthSenseNet(nn.Module):
     def __init__(self, num_imagenet_classes=1000, num_indoor_classes=NUM_INDOOR_CLASSES):
         super().__init__()
         self.num_indoor_classes = num_indoor_classes
@@ -598,12 +598,12 @@ _transform = None
 def get_model():
     global _model, _transform
     if _model is None:
-        _model = PulsePointNet()
+        _model = SixthSenseNet()
         _model.eval()
 
         total_params = sum(p.numel() for p in _model.parameters())
         trainable = sum(p.numel() for p in _model.parameters() if p.requires_grad)
-        print(f'PulsePointNet loaded | {total_params:,} params ({trainable:,} trainable)')
+        print(f'SixthSenseNet loaded | {total_params:,} params ({trainable:,} trainable)')
 
         _transform = transforms.Compose([
             transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),

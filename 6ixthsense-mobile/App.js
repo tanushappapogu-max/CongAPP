@@ -48,7 +48,7 @@ class AppErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err, info) { console.error('Pulse Point crashed', err, info); }
+  componentDidCatch(err, info) { console.error('6ixthSense crashed', err, info); }
   handleRetry = () => this.setState({ hasError: false });
 
   render() {
@@ -437,7 +437,7 @@ function AppContent() {
     return (
       <View style={styles.permissionScreen}>
         <StatusBar style="light" />
-        <Text style={styles.permissionTitle}>Loading Pulse Point</Text>
+        <Text style={styles.permissionTitle}>Loading 6ixthSense</Text>
       </View>
     );
   }
@@ -447,7 +447,7 @@ function AppContent() {
       <SafeAreaView style={styles.permissionScreen}>
         <StatusBar style="light" />
         <MaterialCommunityIcons name="camera-iris" size={58} color="#06d6a0" />
-        <Text style={styles.permissionTitle}>Pulse Point needs camera access</Text>
+        <Text style={styles.permissionTitle}>6ixthSense needs camera access</Text>
         <Text style={styles.permissionText}>
           The app scans your room to locate the object you're looking for and guides you to it with haptic feedback.
         </Text>

@@ -1,4 +1,4 @@
-# 6ixth Sense core
+# 6ixthSense core
 
 This package contains platform-neutral target, detection, tracking, guidance,
 and state-machine logic. It intentionally has no React, camera, Expo, browser,

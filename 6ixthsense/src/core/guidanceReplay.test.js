@@ -3,7 +3,7 @@ import {
   GUIDANCE_REPLAY_FIXTURES,
   createInitialGuidanceState,
   guidanceReducer,
-} from '../../../packages/pulsepoint-core/src/index.js';
+} from '../../../packages/6ixthsense-core/src/index.js';
 
 function replay(fixture) {
   let state = createInitialGuidanceState(fixture.target);

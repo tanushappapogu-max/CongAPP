@@ -1,6 +1,6 @@
 """Export Depth Anything V2 Metric-Indoor-Small to ONNX for the web app.
 
-Writes two variants of the same graph into pulse-point/public/:
+Writes two variants of the same graph into 6ixthsense/public/:
   depth-indoor-small.fp16.onnx   fp16 weights, for the WebGPU backend (~50 MB)
   depth-indoor-small.uint8.onnx  uint8 dynamic-quantized, for the WASM/CPU backend (~27 MB)
 
@@ -35,7 +35,7 @@ from transformers import AutoModelForDepthEstimation
 MODEL_ID = "depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf"
 HERE = Path(__file__).parent
 BUILD = HERE / "build"
-PUBLIC = HERE.parent.parent / "pulse-point" / "public"
+PUBLIC = HERE.parent.parent / "6ixthsense" / "public"
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 

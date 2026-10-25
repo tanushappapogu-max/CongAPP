@@ -1,4 +1,4 @@
-# Pulse Point Python Service
+# 6ixthSense Python Service
 
 This folder contains an optional experimental vision API and unrelated legacy tea-text classification endpoints. The vision service is not validated for assistive use, navigation, obstacle avoidance, or safety-critical decisions.
 

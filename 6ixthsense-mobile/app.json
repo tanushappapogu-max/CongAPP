@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Pulse Point",
+    "name": "6ixthSense",
     "slug": "pulse-point-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -12,8 +12,8 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "Pulse Point uses the camera to scan the room and identify target objects.",
-        "NSMotionUsageDescription": "Pulse Point uses motion sensors to estimate phone orientation during guidance."
+        "NSCameraUsageDescription": "6ixthSense uses the camera to scan the room and identify target objects.",
+        "NSMotionUsageDescription": "6ixthSense uses motion sensors to estimate phone orientation during guidance."
       }
     },
     "android": {
@@ -26,7 +26,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Pulse Point uses the camera to scan the room and identify target objects."
+          "cameraPermission": "6ixthSense uses the camera to scan the room and identify target objects."
         }
       ],
       "expo-asset",

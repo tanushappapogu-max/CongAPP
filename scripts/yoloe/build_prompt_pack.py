@@ -1,6 +1,6 @@
 """Build the browser prompt pack: YOLOE text-prompt embeddings for every item in pack_items.json.
 
-Writes pulse-point/public/prompts/pack.json (item metadata) and pack.bin (float32 [N, 512],
+Writes 6ixthsense/public/prompts/pack.json (item metadata) and pack.bin (float32 [N, 512],
 row i = embedding for items[i].name). Vectors must come from the same YOLOE checkpoint as the
 exported ONNX, so rebuild the pack whenever the model is re-exported.
 
@@ -18,7 +18,7 @@ from ultralytics import YOLOE
 
 HERE = Path(__file__).parent
 REPO = HERE.parent.parent
-OUT = REPO / "pulse-point" / "public" / "prompts"
+OUT = REPO / "6ixthsense" / "public" / "prompts"
 WEIGHTS = "yoloe-11s-seg.pt"
 
 

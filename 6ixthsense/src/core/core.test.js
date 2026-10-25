@@ -9,7 +9,7 @@ import {
   normalizeDetections,
   selectDetection,
   createInitialGuidanceState,
-} from '../../../packages/pulsepoint-core/src/index.js';
+} from '../../../packages/6ixthsense-core/src/index.js';
 
 const box = { x: 0.4, y: 0.4, width: 0.2, height: 0.2 };
 

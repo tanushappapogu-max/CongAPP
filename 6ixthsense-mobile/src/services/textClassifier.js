@@ -1,5 +1,5 @@
 /**
- * textClassifier.js — Offline tea text classifier for Pulse Point
+ * textClassifier.js — Offline tea text classifier for 6ixthSense
  *
  * Lightweight keyword-based fallback when the Python TextCNN server is
  * unavailable. Uses the same label ontology as the server-side model so

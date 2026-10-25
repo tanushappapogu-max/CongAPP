@@ -1,6 +1,6 @@
-# 6ixth Sense Architecture
+# 6ixthSense Architecture
 
-This document describes the supported browser app, the vision server it uses by default, and the adjacent legacy services. `pulse-point/` is the active web client. `pulse-point-mobile/` is a separate exploratory/degraded prototype, not an equivalent production client.
+This document describes the supported browser app, the vision server it uses by default, and the adjacent legacy services. `6ixthsense/` is the active web client. `6ixthsense-mobile/` is a separate exploratory/degraded prototype, not an equivalent production client.
 
 ## High-Level Data Flow
 
@@ -33,7 +33,7 @@ Direction computation -> prototype haptics and speech output
 
 The legacy LocateAnything server (`VITE_SERVER_URL`) can still run alongside this as a separate, optional probe. It is described under the web app below.
 
-## Web App (`pulse-point/`)
+## Web App (`6ixthsense/`)
 
 ### Detection
 
@@ -64,17 +64,17 @@ The legacy LocateAnything server (`VITE_SERVER_URL`) can still run alongside thi
 
 ## Vision Server (`server/vision/`)
 
-- FastAPI app (`vision_app.py`) that loads the same `yoloe-11s.onnx`, `depth-indoor-small.fp16.onnx`, and prompt pack the web app ships, from `pulse-point/public/` (override with `PULSEPOINT_ASSETS`). It uses the CUDA execution provider when available, otherwise CPU. It does not run YOLO11n.
+- FastAPI app (`vision_app.py`) that loads the same `yoloe-11s.onnx`, `depth-indoor-small.fp16.onnx`, and prompt pack the web app ships, from `6ixthsense/public/` (override with `PULSEPOINT_ASSETS`). It uses the CUDA execution provider when available, otherwise CPU. It does not run YOLO11n.
 - `GET /health` returns `{"ok": true, "device": ...}`. `POST /v1/detect` takes a 640×640 letterboxed JPEG and a prompt-pack item name, builds the same target-plus-negatives prompt set as `prompts.js`, and returns boxes in 640 px input space. `POST /v1/depth` takes the square crop and a crop-relative box and returns meters with the 1.03 crop correction applied.
 - Inference runs in a worker thread so a slow depth request does not block detection. An unknown target or invalid box returns 400.
 - Boundary controls: CORS restricted to `cors_origins()` from `server/contract.py`, JPEG/PNG/WebP only, images capped at 1.5 MB, and an in-memory per-IP limit of 900 requests per minute (429 when exceeded).
 - `modal_vision.py` deploys it on Modal with a T4 GPU. The container scales to zero after a few idle minutes; the client's health polling covers the cold start.
 - Privacy: while the server is in use, camera frames and the target name are uploaded on every detection and depth request. The server does not store them.
 
-## Mobile App (`pulse-point-mobile/`)
+## Mobile App (`6ixthsense-mobile/`)
 
 - Expo app provides the user flow, haptics, and orientation guidance UX.
-- This is an exploratory/degraded prototype and should not be treated as the active web client. Its camera, haptics, server, and simulation flows are separate from the supported `pulse-point/` implementation.
+- This is an exploratory/degraded prototype and should not be treated as the active web client. Its camera, haptics, server, and simulation flows are separate from the supported `6ixthsense/` implementation.
 
 ## Experimental Python detector (`server/`)
 

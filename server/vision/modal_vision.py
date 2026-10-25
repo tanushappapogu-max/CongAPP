@@ -1,9 +1,9 @@
-"""Modal deployment for the 6ixth Sense vision server (YOLOE + Depth Anything on a T4 GPU).
+"""Modal deployment for the 6ixthSense vision server (YOLOE + Depth Anything on a T4 GPU).
 
 Deploy (from repo root, after `pip install modal && python3 -m modal setup`):
   modal deploy server/vision/modal_vision.py
 
-The printed *.modal.direct URL is the web app's vision server (pulse-point/src/detection/remote.js). The container
+The printed *.modal.direct URL is the web app's vision server (6ixthsense/src/detection/remote.js). The container
 sleeps after a few idle minutes and Modal bills only while it runs.
 """
 from pathlib import Path
@@ -11,7 +11,7 @@ from pathlib import Path
 import modal
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-PUBLIC = ROOT / "pulse-point" / "public"
+PUBLIC = ROOT / "6ixthsense" / "public"
 
 image = (
     modal.Image.from_registry("nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04", add_python="3.11")

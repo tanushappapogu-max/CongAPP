@@ -16,26 +16,26 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: pulse-point/package-lock.json
+          cache-dependency-path: 6ixthsense/package-lock.json
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install web dependencies
-        working-directory: pulse-point
+        working-directory: 6ixthsense
         run: npm ci
 
       - name: Run web and shared-core tests
-        working-directory: pulse-point
+        working-directory: 6ixthsense
         run: npm test
 
       - name: Build web app
-        working-directory: pulse-point
+        working-directory: 6ixthsense
         run: npm run build
 
       - name: Run mobile smoke validation
-        working-directory: pulse-point-mobile
+        working-directory: 6ixthsense-mobile
         run: npm run smoke
 
       - name: Check API syntax

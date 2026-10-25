@@ -1,4 +1,4 @@
-# Contributing to 6ixth Sense
+# Contributing to 6ixthSense
 
 ## Branching
 
@@ -36,7 +36,7 @@ test: cover BoxTracker stale/fresh lifecycle
 ## Running tests
 
 ```bash
-cd pulse-point
+cd 6ixthsense
 npm install
 npm test          # single run
 npm run test:watch  # watch mode during development
@@ -48,11 +48,11 @@ All tests must pass before a PR can be merged.
 
 | Directory | What lives here | Status |
 |-----------|-----------------|--------|
-| `pulse-point/` | Vite web app — React + TF.js / ONNX Runtime Web | **Primary / Active** — all general features & bug fixes go here |
-| `pulse-point-mobile/` | Expo mobile app — React Native | **Exploratory / Degraded** — prototype only (do not spend time applying general tasks here unless requested) |
+| `6ixthsense/` | Vite web app — React + TF.js / ONNX Runtime Web | **Primary / Active** — all general features & bug fixes go here |
+| `6ixthsense-mobile/` | Expo mobile app — React Native | **Exploratory / Degraded** — prototype only (do not spend time applying general tasks here unless requested) |
 | `api/` | Vercel serverless functions | Active backend proxies |
 
-Keep changes scoped to one sub-project per commit where possible. Default to `pulse-point/` for app-level changes.
+Keep changes scoped to one sub-project per commit where possible. Default to `6ixthsense/` for app-level changes.
 
 ## Secrets
 

@@ -40,7 +40,7 @@ except ImportError:  # Supports `uvicorn main:app` from the server directory.
     from text_model import classify_text, retrain
     from tea_dataset import TEA_TYPES, FLAVOR_LABELS, QUALITY_TIERS
 
-app = FastAPI(title="Pulse Point Vision API")
+app = FastAPI(title="6ixthSense Vision API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -177,7 +177,7 @@ async def detect(
     if normalized_target:
         result = locate_object(image_bytes, normalized_target)
 
-    # ── Fallback: PulsePointNet (indoor-object ontology, ~45 classes) ──
+    # ── Fallback: SixthSenseNet (indoor-object ontology, ~45 classes) ──
     if result is None:
         try:
             result = predict(image_bytes, target_name=normalized_target or None)
@@ -185,7 +185,7 @@ async def detect(
             return JSONResponse(status_code=400, content={"error": "Malformed image."})
 
     # Keep the safety boundary authoritative even if a model adapter (either
-    # the PulsePointNet fallback or the LocateAnything-3B primary path)
+    # the SixthSenseNet fallback or the LocateAnything-3B primary path)
     # returns incomplete or overly optimistic metadata.
     response_metadata = detector_metadata()
     if isinstance(result.get("metadata"), dict):

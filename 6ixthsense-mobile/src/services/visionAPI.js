@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { normalizeDetection } from '../../../packages/pulsepoint-core/src/index.js';
+import { normalizeDetection } from '../../../packages/6ixthsense-core/src/index.js';
 
 const DEFAULT_TIMEOUT_MS = 5500;
 const MAX_UPLOAD_QUALITY = 0.45;
@@ -27,7 +27,7 @@ export const configuredVisionApiUrl = initialUrl;
 
 export function setServerUrl(url) {
   const validated = validateUrl(url);
-  if (!validated) throw new Error('Invalid Pulse Point Vision API URL. Use an http(s) URL.');
+  if (!validated) throw new Error('Invalid 6ixthSense Vision API URL. Use an http(s) URL.');
   _serverUrl = validated;
   return _serverUrl;
 }

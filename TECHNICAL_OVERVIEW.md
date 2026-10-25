@@ -1,10 +1,10 @@
-# 6ixth Sense Technical Overview
+# 6ixthSense Technical Overview
 
 This document describes the implementation in the supported web app and the adjacent experimental server as they exist in this repository. It is an implementation reference, not a performance, safety, clinical, or accessibility validation report.
 
 ## Product Scope and Status
 
-6ixth Sense is a browser prototype for finding a named object and presenting direction/proximity cues through a visual overlay, speech, and device vibration where supported. The active web client is pulse-point/. The Expo app in pulse-point-mobile/ is a separate exploratory/degraded prototype.
+6ixthSense is a browser prototype for finding a named object and presenting direction/proximity cues through a visual overlay, speech, and device vibration where supported. The active web client is 6ixthsense/. The Expo app in 6ixthsense-mobile/ is a separate exploratory/degraded prototype.
 
 The project has not been validated for independent mobility, obstacle avoidance, route planning, or safety-critical use. A detection, distance estimate, or "reach" announcement must not be interpreted as proof that an object is safe to approach or touch. The repository includes unit tests for logic modules; it does not currently contain a representative device/scene accuracy benchmark or human-factors validation.
 
@@ -23,13 +23,13 @@ A remote detector is optional. Its request and selection behavior is described s
 
 ### Prompt resolution
 
-The prompt pack consists of metadata and precomputed YOLOE prompt embeddings under pulse-point/public/prompts/. Build scripts are under scripts/yoloe/. Targets can resolve through pack names and aliases, COCO aliases, and fuzzy matching. Prompt packs are finite: this is not unrestricted natural-language understanding. If a typed phrase does not resolve to a prompt-pack item, the local inference function receives no prompt set and returns no detections for that target.
+The prompt pack consists of metadata and precomputed YOLOE prompt embeddings under 6ixthsense/public/prompts/. Build scripts are under scripts/yoloe/. Targets can resolve through pack names and aliases, COCO aliases, and fuzzy matching. Prompt packs are finite: this is not unrestricted natural-language understanding. If a typed phrase does not resolve to a prompt-pack item, the local inference function receives no prompt set and returns no detections for that target.
 
 The target item may also include a reference physical width used by the distance fallback. The width is an assumed class/item size, not a measurement of the specific object in the camera scene.
 
 ### Detector selection
 
-The models are loaded by pulse-point/src/detection/engine.js using ONNX Runtime Web:
+The models are loaded by 6ixthsense/src/detection/engine.js using ONNX Runtime Web:
 
 - With a usable WebGPU adapter, the app loads YOLOE-11s and runs it with the prompt embeddings. If that model/session fails to load, the startup path tries YOLO11n. YOLO11n still recognizes only its 80 COCO classes.
 - Without usable WebGPU, the initial local model is YOLO11n on WASM/CPU. For a target that maps to a COCO class, YOLO11n is the normal local detector, not a fallback after YOLOE fails.
@@ -62,7 +62,7 @@ The BoxTracker associates the requested object across frames and smooths its box
 
 Depth Anything V2 Metric-Indoor-Small runs in a worker with its own ONNX Runtime session. The worker uses the checked-in FP16 model with WebGPU where available and the uint8 model with WASM otherwise. Depth sampling is performed within the target box. The guidance code prefers a recent depth reading when available and otherwise uses an object-width estimate.
 
-Depth output and width-based estimates are not calibrated for every camera, device, object instance, lighting condition, or environment. A numeric-looking distance should be treated as an experimental estimate, not a verified measurement. The testing-only protocol in testing/pulse-point-benchmark/ describes manual measurement collection without adding production telemetry.
+Depth output and width-based estimates are not calibrated for every camera, device, object instance, lighting condition, or environment. A numeric-looking distance should be treated as an experimental estimate, not a verified measurement. The testing-only protocol in testing/6ixthsense-benchmark/ describes manual measurement collection without adding production telemetry.
 
 ### Direction and proximity
 
@@ -76,18 +76,18 @@ The canvas renders detection boxes, a target label, coordinates, a decorative 7 
 
 ## Assets, Caching, and Deployment
 
-The web app is a React/Vite static build configured at the repository root for Vercel. ONNX models, prompt assets, and the service worker are under pulse-point/public/. The service worker caches selected assets after they have been fetched successfully. Initial model/runtime downloads, camera access, app navigation, browser APIs, and device support can still require a network or fail; caching is not an offline guarantee.
+The web app is a React/Vite static build configured at the repository root for Vercel. ONNX models, prompt assets, and the service worker are under 6ixthsense/public/. The service worker caches selected assets after they have been fetched successfully. Initial model/runtime downloads, camera access, app navigation, browser APIs, and device support can still require a network or fail; caching is not an offline guarantee.
 
-The app's package scripts are npm run dev, npm test, and npm run build from pulse-point/. Model export and prompt-pack construction scripts are in scripts/yoloe/; depth export tooling is in scripts/depth/.
+The app's package scripts are npm run dev, npm test, and npm run build from 6ixthsense/. Model export and prompt-pack construction scripts are in scripts/yoloe/; depth export tooling is in scripts/depth/.
 
 ## Tests and Evaluation
 
-Unit tests cover target resolution, detector prompt preparation, tracking, scanner state, guidance, camera/settings/voice helpers, and core contract behavior. Run the web checks from pulse-point/:
+Unit tests cover target resolution, detector prompt preparation, tracking, scanner state, guidance, camera/settings/voice helpers, and core contract behavior. Run the web checks from 6ixthsense/:
 
 - npm test
 - npm run build
 
-The testing/pulse-point-benchmark/ folder is explicitly separate from the production app. It contains a repeatable manual protocol, blank CSV template, and standard-library summary script for exploratory outcomes such as correct locks, false locks, time to lock, FPS when available, and distance error when numeric estimates are exposed. Its sample sizes are a screening baseline, not a statistically powered study. Human-participant or fair research may require advance approvals; follow the relevant rules before recruiting or collecting data.
+The testing/6ixthsense-benchmark/ folder is explicitly separate from the production app. It contains a repeatable manual protocol, blank CSV template, and standard-library summary script for exploratory outcomes such as correct locks, false locks, time to lock, FPS when available, and distance error when numeric estimates are exposed. Its sample sizes are a screening baseline, not a statistically powered study. Human-participant or fair research may require advance approvals; follow the relevant rules before recruiting or collecting data.
 
 ## Known Evidence Gaps
 

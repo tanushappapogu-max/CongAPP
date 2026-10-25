@@ -1,7 +1,7 @@
 {
-  "installCommand": "cd pulse-point && npm install",
-  "buildCommand": "cd pulse-point && npm run build",
-  "outputDirectory": "pulse-point/dist",
+  "installCommand": "cd 6ixthsense && npm install",
+  "buildCommand": "cd 6ixthsense && npm run build",
+  "outputDirectory": "6ixthsense/dist",
   "framework": "vite",
   "functions": {
     "api/ai.js": {

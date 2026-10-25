@@ -1,5 +1,5 @@
 """
-Modal deployment for Pulse Point detection server.
+Modal deployment for 6ixthSense detection server.
 
 Runs LocateAnything-3B on an A10G GPU.
 Model weights are cached in a persistent volume so cold starts are fast after the first run.
