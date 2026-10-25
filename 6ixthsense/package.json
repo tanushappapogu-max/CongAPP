@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:all": "ALL_TESTS=1 vitest run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "5.0.4",

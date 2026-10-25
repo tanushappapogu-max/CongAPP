@@ -296,8 +296,9 @@ These are for testing and diagnosis, and they can be combined, e.g. `https://6ix
 
 ```bash
 cd 6ixthsense
-npm test              # unit tests (Vitest)
+npm test              # unit tests (Vitest), 14 of the 15 test files
 npm run test:watch
+npm run test:all      # all 15, including the COCO label-alias tests
 npm run build         # production build into 6ixthsense/dist
 npm run preview       # serve the production build
 ```
